@@ -7,8 +7,9 @@ import 'grid_expander.dart';
 
 typedef ExpandCollapseCallback<T extends Object> = void Function(GridList<T>);
 typedef CreateItemCallback<T extends Object> = T Function();
-typedef GridItemBuilder<T extends Object> = Widget Function(BuildContext, T);
+typedef GridItemBuilder<T extends Object> = Widget Function(BuildContext, int index, T);
 typedef ItemToBoolCallback<T extends Object> = bool Function(T);
+typedef IndexItemToBoolCallback<T extends Object> = bool Function(int, T);
 typedef IndexItemCallback<T extends Object> = void Function(int, T);
 typedef DragItemCallback = void Function(int);
 typedef WidgetWrapper<T extends Object> = Widget Function(T, Widget);

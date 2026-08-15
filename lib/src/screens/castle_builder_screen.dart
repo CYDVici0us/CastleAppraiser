@@ -4,10 +4,13 @@ import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/utils/grid_expander.dart';
 import 'package:btcc/src/utils/navigation_helper.dart';
 import 'package:btcc/src/utils/tile_helper.dart';
+import 'package:btcc/src/utils/tile_placement.dart';
 import 'package:btcc/src/utils/typedefs.dart';
 import 'package:btcc/src/widgets/background_container.dart';
+import 'package:btcc/src/widgets/builder/drag_and_drop_grid.dart';
 import 'package:btcc/src/widgets/builder/expandable_grid_map_view.dart';
 import 'package:btcc/src/widgets/builder/filtered_drag_and_drop_list_view.dart';
+import 'package:btcc/src/widgets/builder/tile_picker_sheet.dart';
 import 'package:btcc/src/widgets/button_padding.dart';
 import 'package:btcc/src/widgets/flow_breadcrumb.dart';
 import 'package:btcc/src/widgets/tile/tile_widget.dart';
@@ -53,13 +56,21 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>{
   late GridList<Tile> _castleTiles;
   DraggedTileInfo? _draggingTile;
   late Castle _castle;
+  int? _selectedIndex;
+
+  static bool _isOccupied(Tile tile) => !tile.isEmpty();
 
   @override
   void initState() {
     super.initState();
 
     _textEditingController = new TextEditingController();
-    _castleTiles = widget.castleTiles;
+    final normalized = GridListNormalizer.normalizePerimeter(
+      widget.castleTiles,
+      isOccupied: _isOccupied,
+      getEmpty: () => Empty(),
+    );
+    _castleTiles = normalized.grid;
     _allTiles = TileHelper().getListOfTilesExcludingTilesAndTrs(_castleTiles.items);
     _castle = new Castle(_castleTiles);
   }
@@ -70,6 +81,29 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>{
     super.dispose();
   }
 
+  bool _canAddAt(int index) =>
+      GridListNormalizer.canPlaceAdjacent(
+        _castleTiles,
+        index,
+        isOccupied: _isOccupied,
+      ) &&
+      !TilePlacement.isDirectlyAboveOutdoor(_castleTiles, index);
+
+  bool _canPlaceTileAt(int index, Tile tile, {bool allowAboveOutdoor = false}) =>
+      TilePlacement.canPlaceTile(
+        _castleTiles,
+        index,
+        tile,
+        allowAboveOutdoor: allowAboveOutdoor,
+      );
+
+  GridNormalizeResult<Tile> _normalize(GridList<Tile> grid) =>
+      GridListNormalizer.normalizePerimeter(
+        grid,
+        isOccupied: _isOccupied,
+        getEmpty: () => Empty(),
+      );
+
   void _updateCastle(GridList<Tile> copy) {
     setState(() {
       _castleTiles = copy;
@@ -78,14 +112,310 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>{
     });
   }
 
+  void _onTapCell(int index) {
+    final tile = _castleTiles.items[index];
+    if (tile.tileType == TileType.Placeholder) {
+      return;
+    }
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
+
+  Future<void> _openTilePickerForSelected() async {
+    final index = _selectedIndex;
+    if (index == null) return;
+
+    final chosen = await showTilePickerDialog(
+      context: context,
+      availableTiles: List<Tile>.from(_allTiles),
+    );
+    if (chosen == null || !mounted) return;
+
+    _placeTileAt(index, chosen);
+  }
+
+  void _placeTileAt(int index, Tile tile) {
+    final existing = _castleTiles.items[index];
+    // Add only onto adjacent empties; Update may keep camera placements above Outdoor.
+    if (existing.isEmpty()) {
+      if (!_canAddAt(index) || !_canPlaceTileAt(index, tile)) {
+        return;
+      }
+    } else if (!_canPlaceTileAt(index, tile, allowAboveOutdoor: true)) {
+      return;
+    }
+
+    var copy = _castleTiles;
+    copy.items[index] = tile;
+    final normalized = _normalize(copy);
+    final mapped = normalized.mapIndex(index);
+
+    setState(() {
+      _castleTiles = normalized.grid;
+      _castle = Castle(_castleTiles);
+      _draggingTile = null;
+      _allTiles = TileHelper().getListOfTilesExcludingTilesAndTrs(_castleTiles.items);
+      _selectedIndex = mapped;
+    });
+  }
+
+  void _removeSelectedTile() {
+    final index = _selectedIndex;
+    if (index == null) return;
+    final tile = _castleTiles.items[index];
+    if (!tile.isMovable()) return;
+
+    final copy = _castleTiles;
+    copy.items[index] = Empty();
+    final normalized = _normalize(copy);
+    final mapped = normalized.mapIndex(index);
+
+    setState(() {
+      _castleTiles = normalized.grid;
+      _castle = Castle(_castleTiles);
+      _draggingTile = null;
+      _allTiles = TileHelper().getListOfTilesExcludingTilesAndTrs(_castleTiles.items);
+      _selectedIndex = mapped;
+    });
+  }
+
+  void _showThroneRoomPicker() {
+    var trs = TileHelper().getAllThroneRooms();
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Choose a throne room'),
+            Container(
+              height: TileWidget.defaultTileWidthHeight,
+              width: MediaQuery.of(context).size.width * .8,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: trs.length,
+                itemBuilder: (ctx, index) => Container(
+                  padding: EdgeInsets.symmetric(horizontal: 10.0),
+                  child: InkWell(
+                    child: TileWidget(
+                      trs[index],
+                    ),
+                    onTap: () {
+                      var copy = _castleTiles;
+                      int i = copy.items.indexWhere((element) => element.tileType == TileType.ThroneRoom);
+                      copy.items.replaceRange(i, i+1, [trs[index]]);
+                      _updateCastle(copy);
+                      Navigator.pop(ctx);
+                    },
+                  )
+                )
+              )
+            )
+          ],
+        ),
+      )
+    );
+  }
+
+  static String _enumLabel(Object value) =>
+      value.toString().split('.').last;
+
+  String? _tileScoringSummary(Tile tile) {
+    if (tile.isEmpty() || tile.isPlaceholder()) return null;
+
+    final parts = <String>[];
+
+    if (tile.scoringCondition != ScoringCondition.None) {
+      final condition = _enumLabel(tile.scoringCondition);
+      final positions = tile.scoringPositions;
+      String where = '';
+      if (positions.contains(ScoringPosition.Type)) {
+        where = ' in castle';
+      } else if (positions.contains(ScoringPosition.Connected)) {
+        where = ' connected';
+      } else if (positions.contains(ScoringPosition.Neighbor)) {
+        where = ' adjacent';
+      } else if (positions.isNotEmpty) {
+        where = ' (${positions.map(_enumLabel).join(', ')})';
+      }
+      if (tile.scorePer != 0) {
+        parts.add('+${tile.scorePer} per $condition$where');
+      } else {
+        parts.add(condition + where);
+      }
+    } else if (tile.scorePer != 0) {
+      parts.add('+${tile.scorePer}');
+    }
+
+    if (tile.throneRoomCondition != ScoringCondition.None) {
+      parts.add('+${tile.scorePer} per ${_enumLabel(tile.throneRoomCondition)}');
+    }
+
+    if (tile.decorationType != DecorationType.None) {
+      parts.add(_enumLabel(tile.decorationType));
+    }
+
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
+  Widget _getSelectedTileDetails(int index, Tile tile) {
+    final theme = Theme.of(context);
+    final isEmpty = tile.isEmpty();
+    final summary = _tileScoringSummary(tile);
+    final invalidAboveOutdoor =
+        TilePlacement.hasInvalidAboveOutdoorPlacement(_castleTiles, index);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (!isEmpty)
+            TileWidget(
+              tile,
+              scale: tile.isThroneRoom() ? 0.35 : 0.5,
+              showOutline: true,
+              showInvalidBadge: invalidAboveOutdoor,
+            ),
+          if (!isEmpty) const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isEmpty ? 'Empty cell' : tile.name,
+                  style: theme.textTheme.titleMedium,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (!isEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    tileTypeDisplayName(tile.tileType),
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  if (summary != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      summary,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ] else
+                  Text(
+                    _canAddAt(index)
+                        ? 'Tap Add to place a tile'
+                        : 'Cannot place a tile here',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                if (invalidAboveOutdoor) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Invalid placement: cannot sit above Outdoor',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _getSelectionActionBar() {
+    final index = _selectedIndex;
+    if (index == null || index < 0 || index >= _castleTiles.items.length) {
+      return const SizedBox.shrink();
+    }
+
+    final tile = _castleTiles.items[index];
+    final isEmpty = tile.isEmpty();
+    final isThrone = tile.tileType == TileType.ThroneRoom;
+    final isMovable = tile.isMovable();
+    final canAdd = isEmpty && _canAddAt(index);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _getSelectedTileDetails(index, tile),
+          Row(
+            children: [
+              if (canAdd)
+                FloatingActionButton.extended(
+                  heroTag: 'add_tile',
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add'),
+                  onPressed: _openTilePickerForSelected,
+                ),
+              if (isMovable) ...[
+                FloatingActionButton.extended(
+                  heroTag: 'update_tile',
+                  icon: const Icon(Icons.edit),
+                  label: const Text('Update'),
+                  onPressed: _openTilePickerForSelected,
+                ),
+                const SizedBox(width: 8),
+                FloatingActionButton.extended(
+                  heroTag: 'remove_tile',
+                  icon: const Icon(Icons.delete),
+                  label: const Text('Remove'),
+                  onPressed: _removeSelectedTile,
+                ),
+              ],
+              if (isThrone)
+                FloatingActionButton.extended(
+                  heroTag: 'update_tr_selected',
+                  icon: const Icon(Icons.edit),
+                  label: const Text('Update'),
+                  onPressed: _showThroneRoomPicker,
+                ),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Clear selection',
+                icon: const Icon(Icons.close),
+                onPressed: () {
+                  setState(() {
+                    _selectedIndex = null;
+                  });
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _getBody() => ExpandableGridMapView<Tile>(
     gridList: _castleTiles,
     getEmpty: () => Empty(),
     canDragItem: (item) => item.isMovable(),
-    canDropOnItem: (item) => item.isEmpty(),
-    builder: (_, item) => TileWidget(item, showOutline: true,),
-    feedback: (_, item) => TileWidget(item),
+    isOccupied: _isOccupied,
+    canDropOnItem: (index, item) =>
+        item.isEmpty() && _canAddAt(index),
+    canAcceptDraggedItem: (index, tile) => _canPlaceTileAt(index, tile),
+    builder: (context, index, item) => TileWidget(
+      item,
+      showOutline: true,
+      showInvalidBadge:
+          TilePlacement.hasInvalidAboveOutdoorPlacement(_castleTiles, index),
+    ),
+    feedback: (context, index, item) => TileWidget(
+      item,
+      showInvalidBadge:
+          TilePlacement.hasInvalidAboveOutdoorPlacement(_castleTiles, index),
+    ),
     wrapperOnDropHover: (item, built) => Container(
       child: built,
       foregroundDecoration: BoxDecoration(
@@ -95,6 +425,8 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>{
         ),
       ),
     ),
+    selectedIndex: _selectedIndex,
+    onTapItem: _onTapCell,
     onDropOnItem: (int index, Tile item) {
       //print(item.toJson());
       var copy = _castleTiles;
@@ -112,6 +444,10 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>{
       }
 
       _updateCastle(copy);
+      setState(() {
+        _allTiles = TileHelper().getListOfTilesExcludingTilesAndTrs(_castleTiles.items);
+        _selectedIndex = null;
+      });
     },
     onDragItem: (int index) {
       //print(_castleTiles.items[index].toJson());
@@ -126,9 +462,15 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>{
       }
 
       _updateCastle(copy);
+      setState(() {
+        _selectedIndex = null;
+      });
     },
     onExpandCollapse: (result) {
       _updateCastle(result);
+      setState(() {
+        _allTiles = TileHelper().getListOfTilesExcludingTilesAndTrs(_castleTiles.items);
+      });
     },
     onDragCancelled: (int index, Tile item) {
       // same as drop on item, restore it to its old location
@@ -147,7 +489,8 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>{
         copy.items[index] = item;
       }
 
-      _updateCastle(copy);
+      final normalized = _normalize(copy);
+      _updateCastle(normalized.grid);
     },
   );
 
@@ -161,6 +504,7 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>{
   List<Widget> _getFilteredListViewChildren() {
     var filtered = _getFilteredTiles();
     return filtered.map((tile) => LongPressDraggable(
+      delay: DragAndDropGrid.dragDelay,
       data: tile,
       feedback: TileWidget(tile),
       child: TileWidget(tile),
@@ -192,44 +536,7 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>{
   Widget _getChangeThroneRoomButton() => FloatingActionButton.extended(
     heroTag: 'tr',
     label: Text('Set Throneroom'),
-    onPressed: () {
-      var trs = TileHelper().getAllThroneRooms();
-
-      showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Choose a throne room'),
-              Container(
-                height: TileWidget.defaultTileWidthHeight,
-                width: MediaQuery.of(context).size.width * .8,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: trs.length,
-                  itemBuilder: (ctx, index) => Container(
-                    padding: EdgeInsets.symmetric(horizontal: 10.0),
-                    child: InkWell(
-                      child: TileWidget(
-                        trs[index],
-                      ),
-                      onTap: () {
-                        var copy = _castleTiles;
-                        int i = copy.items.indexWhere((element) => element.tileType == TileType.ThroneRoom);
-                        copy.items.replaceRange(i, i+1, [trs[index]]);
-                        _updateCastle(copy);
-                        Navigator.pop(ctx);
-                      },
-                    )
-                  )
-                )
-              )
-            ],
-          ),
-        )
-      );
-    }
+    onPressed: _showThroneRoomPicker,
   );
 
   Widget _getSaveButton() => FloatingActionButton.extended(
@@ -279,6 +586,7 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>{
 
   Widget _getBottomSheet() => Column(
     children: [
+      _getSelectionActionBar(),
       FilteredDragAndDropListView<Tile>(
           hintText: 'Filter by tile name',
           onAcceptWithDetails: (DragTargetDetails details, ScrollController controller) {

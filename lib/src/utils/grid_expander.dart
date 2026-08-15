@@ -232,3 +232,126 @@ class GridListExpander<T extends Object> {
     return new GridList(newWidth, newList);
   }
 }
+
+/// Result of fitting a grid to occupied tiles plus a one-cell empty perimeter.
+class GridNormalizeResult<T extends Object> {
+  final GridList<T> grid;
+  final int contentMinX;
+  final int contentMinY;
+  final int oldWidth;
+  final bool changed;
+
+  GridNormalizeResult({
+    required this.grid,
+    required this.contentMinX,
+    required this.contentMinY,
+    required this.oldWidth,
+    required this.changed,
+  });
+
+  /// Maps an index from the pre-normalize grid into the normalized grid.
+  /// Returns null if the old cell falls outside the new bounds.
+  int? mapIndex(int oldIndex) {
+    final oldX = oldIndex % oldWidth;
+    final oldY = oldIndex ~/ oldWidth;
+    final newX = oldX - contentMinX + 1;
+    final newY = oldY - contentMinY + 1;
+    if (newX < 0 || newY < 0 || newX >= grid.width || newY >= grid.height) {
+      return null;
+    }
+    return newX + newY * grid.width;
+  }
+}
+
+class GridListNormalizer {
+  /// Rebuilds [input] so occupied cells sit in a tight bounding box with exactly
+  /// one empty cell of padding on every side.
+  static GridNormalizeResult<T> normalizePerimeter<T extends Object>(
+    GridList<T> input, {
+    required GridListValidItemCheck<T> isOccupied,
+    required CreateItemCallback<T> getEmpty,
+  }) {
+    int? minX, maxX, minY, maxY;
+    for (int i = 0; i < input.items.length; i++) {
+      if (!isOccupied(input.items[i])) continue;
+      final x = i % input.width;
+      final y = i ~/ input.width;
+      minX = minX == null ? x : (x < minX ? x : minX);
+      maxX = maxX == null ? x : (x > maxX ? x : maxX);
+      minY = minY == null ? y : (y < minY ? y : minY);
+      maxY = maxY == null ? y : (y > maxY ? y : maxY);
+    }
+
+    if (minX == null || maxX == null || minY == null || maxY == null) {
+      return GridNormalizeResult(
+        grid: input,
+        contentMinX: 0,
+        contentMinY: 0,
+        oldWidth: input.width,
+        changed: false,
+      );
+    }
+
+    final newWidth = (maxX - minX + 1) + 2;
+    final newHeight = (maxY - minY + 1) + 2;
+    final alreadyTight = minX == 1 &&
+        minY == 1 &&
+        maxX == input.width - 2 &&
+        maxY == input.height - 2 &&
+        newWidth == input.width &&
+        newHeight == input.height;
+
+    if (alreadyTight) {
+      return GridNormalizeResult(
+        grid: input,
+        contentMinX: minX,
+        contentMinY: minY,
+        oldWidth: input.width,
+        changed: false,
+      );
+    }
+
+    final newItems = List<T>.generate(newWidth * newHeight, (_) => getEmpty());
+    for (int i = 0; i < input.items.length; i++) {
+      if (!isOccupied(input.items[i])) continue;
+      final x = i % input.width;
+      final y = i ~/ input.width;
+      final newIndex = (x - minX + 1) + (y - minY + 1) * newWidth;
+      newItems[newIndex] = input.items[i];
+    }
+
+    return GridNormalizeResult(
+      grid: GridList<T>(newWidth, newItems),
+      contentMinX: minX,
+      contentMinY: minY,
+      oldWidth: input.width,
+      changed: true,
+    );
+  }
+
+  /// Empty cell orthogonally adjacent to at least one occupied cell.
+  static bool canPlaceAdjacent<T extends Object>(
+    GridList<T> grid,
+    int index, {
+    required GridListValidItemCheck<T> isOccupied,
+  }) {
+    if (index < 0 || index >= grid.items.length) return false;
+    if (isOccupied(grid.items[index])) return false;
+
+    final x = index % grid.width;
+    final y = index ~/ grid.width;
+    const neighbors = [
+      [0, -1],
+      [0, 1],
+      [-1, 0],
+      [1, 0],
+    ];
+    for (final d in neighbors) {
+      final nx = x + d[0];
+      final ny = y + d[1];
+      if (nx < 0 || ny < 0 || nx >= grid.width || ny >= grid.height) continue;
+      if (isOccupied(grid.items[nx + ny * grid.width])) return true;
+    }
+    return false;
+  }
+}

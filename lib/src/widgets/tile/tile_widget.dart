@@ -10,11 +10,13 @@ class TileWidget extends StatelessWidget {
   final double tileWidth;
   final Color emptyColor;
   final bool showOutline;
+  final bool showInvalidBadge;
   TileWidget(this.tile, {
     this.scale=1, 
     this.tileWidth=defaultTileWidthHeight,
     this.emptyColor=Colors.black,
     this.showOutline=false,
+    this.showInvalidBadge=false,
   });
 
   static const double defaultTileWidthHeight = 100;
@@ -166,7 +168,37 @@ class TileWidget extends StatelessWidget {
     return Container(
       height: defaultTileWidthHeight*scale,
       width: _getTileWidth(),
-      child: child
+      child: showInvalidBadge
+          ? Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned.fill(child: child),
+                Positioned(
+                  top: 2 * scale,
+                  right: 2 * scale,
+                  child: Container(
+                    padding: EdgeInsets.all(2 * scale),
+                    decoration: const BoxDecoration(
+                      color: Colors.redAccent,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black54,
+                          blurRadius: 2,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      Icons.warning_amber_rounded,
+                      size: 18 * scale,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : child,
     );
   }
 }

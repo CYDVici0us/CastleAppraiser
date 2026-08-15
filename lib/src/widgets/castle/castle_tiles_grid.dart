@@ -1,5 +1,6 @@
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/utils/grid_expander.dart';
+import 'package:btcc/src/utils/tile_placement.dart';
 import 'package:btcc/src/widgets/tile/tile_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -48,6 +49,8 @@ class CastleTilesGrid extends StatelessWidget {
       widgetList.add(TileWidget(castleTiles.items[i],
         scale: scaleToUse,
         emptyColor: Colors.transparent,
+        showInvalidBadge:
+            TilePlacement.hasInvalidAboveOutdoorPlacement(castleTiles, i),
       ));
     }
 
