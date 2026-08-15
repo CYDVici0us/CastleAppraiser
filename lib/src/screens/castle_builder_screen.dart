@@ -1,10 +1,6 @@
-import 'dart:io';
-import 'dart:math';
-
 import 'package:btcc/src/utils/log.dart';
 import 'package:btcc/src/analytics/analytics.dart';
 import 'package:btcc/src/models/exports.dart';
-import 'package:btcc/src/state/data_store.dart';
 import 'package:btcc/src/utils/grid_expander.dart';
 import 'package:btcc/src/utils/navigation_helper.dart';
 import 'package:btcc/src/utils/tile_helper.dart';
@@ -13,11 +9,10 @@ import 'package:btcc/src/widgets/background_container.dart';
 import 'package:btcc/src/widgets/builder/expandable_grid_map_view.dart';
 import 'package:btcc/src/widgets/builder/filtered_drag_and_drop_list_view.dart';
 import 'package:btcc/src/widgets/button_padding.dart';
-import 'package:btcc/src/widgets/edit_text_dialog.dart';
+import 'package:btcc/src/widgets/flow_breadcrumb.dart';
 import 'package:btcc/src/widgets/tile/tile_widget.dart';
 import 'package:flutter/material.dart' hide Placeholder;
-import 'package:provider/provider.dart';
-
+import 'dart:math';
 
 class DraggedTileInfo {
   final int index;
@@ -29,14 +24,20 @@ class CastleBuilderScreen extends StatefulWidget {
   
   final int numPicturesTaken;
   final GridList<Tile> castleTiles;
-  final String imagePath;
-  final AddCastleToGameCallback addCastleCallback;
+  final String? imagePath;
+  final AddCastleToGameCallback? addCastleCallback;
+  final UpdateCastleCallback? updateCastleCallback;
+  final Castle? existingCastle;
+  final String? gameTitle;
 
   CastleBuilderScreen({
-    @required this.castleTiles,
+    required this.castleTiles,
     this.imagePath,
-    @required this.addCastleCallback,
+    this.addCastleCallback,
+    this.updateCastleCallback,
+    this.existingCastle,
     this.numPicturesTaken=0,
+    this.gameTitle,
   });
 
   @override
@@ -45,13 +46,13 @@ class CastleBuilderScreen extends StatefulWidget {
 
 class _CastleBuilderScreenState extends State<CastleBuilderScreen>{
 
-  TextEditingController _textEditingController;
+  late TextEditingController _textEditingController;
 
   String _filterText = '';
   List<Tile> _allTiles = [];
-  GridList<Tile> _castleTiles;
-  DraggedTileInfo _draggingTile;
-  Castle _castle;
+  late GridList<Tile> _castleTiles;
+  DraggedTileInfo? _draggingTile;
+  late Castle _castle;
 
   @override
   void initState() {
@@ -177,9 +178,9 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>{
         });
       },
       onDraggableCanceled: (velocity, offset) {
-        log('OnDragCancelled from list view: ${_draggingTile.index}');
+        log('OnDragCancelled from list view: ${_draggingTile!.index}');
         var copy = _allTiles;
-        copy.insert(_draggingTile.index, _draggingTile.tile);
+        copy.insert(_draggingTile!.index, _draggingTile!.tile);
         setState(() {
           _draggingTile = null;
           _allTiles = copy;
@@ -231,29 +232,28 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>{
     }
   );
 
-  Widget _getSaveButton() => Consumer<DataStore>(builder: (ctx, store, child) => FloatingActionButton.extended(
+  Widget _getSaveButton() => FloatingActionButton.extended(
     heroTag: 'save',
     icon: Icon(Icons.save),
     label: Text('Save'),
-    //child: Icon(Icons.save),
-    onPressed: () {
-      showDialog(
-        context: context,
-        builder: (_) => EditTextDialog(
-          confirmationText: 'Give the castle a name',
-          onPressedYes: (str) async {
-            var castle = new Castle(_castleTiles);
-            castle.title = str;
-            await widget.addCastleCallback(castle, '', widget.numPicturesTaken);
+    onPressed: () async {
+      var castle = Castle(_castleTiles);
+      if (widget.updateCastleCallback != null && widget.existingCastle != null) {
+        castle.hiveCastle = widget.existingCastle!.hiveCastle;
+        castle.title = widget.existingCastle!.title;
+        await widget.updateCastleCallback!(castle);
+        await Analytics.logCastleSavedFromCastleBuilder(widget.numPicturesTaken);
+        Navigator.pop(context);
+        return;
+      }
 
-            await Analytics.logCastleSavedFromCastleBuilder(widget.numPicturesTaken);
-
-            Navigator.pop(context);
-          }
-        )
-      );
+      if (widget.addCastleCallback != null) {
+        await widget.addCastleCallback!(castle, widget.imagePath ?? '', widget.numPicturesTaken);
+        await Analytics.logCastleSavedFromCastleBuilder(widget.numPicturesTaken);
+        Navigator.pop(context);
+      }
     }
-  ));
+  );
 
   Widget _getBottomButtonRow() => Row(
     children: [
@@ -286,7 +286,7 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>{
             if (_draggingTile != null) {
               log('OnAcceptWithDetails from listview drag: ${details.offset}');
               var copy = _allTiles;
-              copy.insert(_draggingTile.index, _draggingTile.tile);
+              copy.insert(_draggingTile!.index, _draggingTile!.tile);
               setState(() {
                 _draggingTile = null;
                 _allTiles = copy;
@@ -327,20 +327,34 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>{
   );
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: Platform.isWindows ? AppBar() : null,
-    body: BackgroundContainer(
-      child: Column(
-        children: [
-          Expanded(
-            child: _getBody()
-          ),
-          Align(
-            alignment: FractionalOffset.bottomCenter,
-            child: _getBottomSheet(),
-          ),
-        ],
+  Widget build(BuildContext context) {
+    final editing = widget.updateCastleCallback != null;
+    final segments = <String>[
+      widget.gameTitle ?? 'Game',
+      if (editing) widget.existingCastle?.title ?? 'Castle',
+      editing ? 'Edit' : 'Build',
+    ];
+
+    return Scaffold(
+      appBar: AppBar(
+        title: FlowBreadcrumb(
+          segments: segments,
+          onFirstSegmentTap: () => Navigator.of(context).pop(),
+        ),
       ),
-    )
-  );
+      body: BackgroundContainer(
+        child: Column(
+          children: [
+            Expanded(
+              child: _getBody()
+            ),
+            Align(
+              alignment: FractionalOffset.bottomCenter,
+              child: _getBottomSheet(),
+            ),
+          ],
+        ),
+      )
+    );
+  }
 }

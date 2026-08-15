@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:hive/hive.dart';
+import 'package:hive_ce/hive.dart';
 import 'package:btcc/src/models/exports.dart';
 
 part 'hive_game.g.dart';
@@ -9,18 +9,26 @@ part 'hive_game.g.dart';
 class HiveGame extends HiveObject {
 
   @HiveField(0)
-  DateTime created;
+  DateTime? created;
 
   @HiveField(1)
-  DateTime updated;
+  DateTime? updated;
 
   @HiveField(2)
-  HiveList<HiveCastle> castles;
+  HiveList<HiveCastle>? castles;
+
+  @HiveField(3)
+  String? title;
+
+  @HiveField(4)
+  List<String>? playerNames;
 
   HiveGame({
     this.created,
     this.updated,
     this.castles,
+    this.title,
+    this.playerNames,
   });
 
   @override
@@ -29,5 +37,7 @@ class HiveGame extends HiveObject {
     'castles': castles.toString(),
     'created': created.toString(),
     'updated': updated.toString(),
+    'title': title,
+    'playerNames': playerNames.toString(),
   };
 }

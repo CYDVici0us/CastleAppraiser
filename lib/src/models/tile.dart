@@ -13,51 +13,53 @@ class Tile {
   final TileType _tileType;
   TileType get trueTileType => _tileType;
   TileType get tileType {
-    return duplicate != null ? duplicate.tileType : _tileType;
+    return duplicate != null ? duplicate!.tileType : _tileType;
   }
   final DecorationType _decorationType;
   DecorationType get decorationType {
-    return duplicate != null ? duplicate.decorationType : _decorationType;
+    return duplicate != null ? duplicate!.decorationType : _decorationType;
   }
   final int _scorePer;
   int get scorePer {
-    return duplicate != null ? duplicate.scorePer : _scorePer;
+    return duplicate != null ? duplicate!.scorePer : _scorePer;
   }
   final List<ScoringPosition> _scoringPositions;
   List<ScoringPosition> get scoringPositions {
-    return duplicate != null ? duplicate.scoringPositions : _scoringPositions;
+    return duplicate != null ? duplicate!.scoringPositions : _scoringPositions;
   }
   final ScoringCondition _scoringCondition;
   ScoringCondition get scoringCondition {
-    return duplicate != null ? duplicate.scoringCondition : _scoringCondition;
+    return duplicate != null ? duplicate!.scoringCondition : _scoringCondition;
   }
 
   ScoringCondition throneRoomCondition;
-  Tile duplicate;
+  Tile? duplicate;
 
   // assume image atlases are a grid only images of same size
   // offset indicates coordinates of image in such a grid
   Offset offsetInImage;
-  String localImageLocation;
+  late String localImageLocation;
 
   int score = 0;
 
   Tile({
-    @required this.name,
-    @required this.id,
-    @required TileType tileType,
-    @required DecorationType decorationType,
-    @required int scorePer,
-    @required List<ScoringPosition> scoringPositions,
-    @required ScoringCondition scoringCondition,
+    required this.name,
+    required this.id,
+    required TileType tileType,
+    required DecorationType decorationType,
+    required int scorePer,
+    required List<ScoringPosition> scoringPositions,
+    required ScoringCondition scoringCondition,
     this.throneRoomCondition=ScoringCondition.None,
-    this.localImageLocation,
+    String? localImageLocation,
     this.offsetInImage=const Offset(0,0),
   }): _tileType=tileType, _decorationType=decorationType,
     _scorePer=scorePer, _scoringPositions=scoringPositions,
     _scoringCondition=scoringCondition {
-    if (this.localImageLocation == null) {
+    if (localImageLocation == null) {
       this.localImageLocation = 'assets/images/${this.name.replaceAll(' ', '')}.jpg';
+    } else {
+      this.localImageLocation = localImageLocation;
     }
   }
 

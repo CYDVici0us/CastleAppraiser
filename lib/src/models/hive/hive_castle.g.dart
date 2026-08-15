@@ -8,7 +8,7 @@ part of 'hive_castle.dart';
 
 class HiveCastleAdapter extends TypeAdapter<HiveCastle> {
   @override
-  final int typeId = 1;
+  final typeId = 1;
 
   @override
   HiveCastle read(BinaryReader reader) {
@@ -17,12 +17,12 @@ class HiveCastleAdapter extends TypeAdapter<HiveCastle> {
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return HiveCastle(
-      tiles: (fields[0] as List)?.cast<TileId>(),
-      tileWidth: fields[1] as int,
-      imagePath: fields[2] as String,
-      created: fields[3] as DateTime,
-      updated: fields[4] as DateTime,
-      title: fields[5] as String,
+      tiles: (fields[0] as List?)?.cast<TileId>(),
+      tileWidth: (fields[1] as num?)?.toInt(),
+      imagePath: fields[2] as String?,
+      created: fields[3] as DateTime?,
+      updated: fields[4] as DateTime?,
+      title: fields[5] as String?,
     );
   }
 

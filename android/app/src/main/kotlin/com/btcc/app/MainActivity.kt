@@ -133,7 +133,7 @@ class MainActivity: FlutterActivity() {
                 photoFile.also {
                     val photoURI: Uri = FileProvider.getUriForFile(
                         this,
-                        "com.example.android.fileprovider",
+                        "com.btcc.app.fileprovider",
                         it
                     )
                     takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI)

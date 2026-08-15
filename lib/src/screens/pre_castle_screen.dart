@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:btcc/src/state/camera_store.dart';
 import 'package:btcc/src/utils/log.dart';
 import 'package:btcc/src/analytics/analytics.dart';
 import 'package:btcc/src/models/exports.dart';
@@ -7,8 +8,10 @@ import 'package:btcc/src/state/tf_store.dart';
 import 'package:btcc/src/tflite/tflite_helper.dart';
 import 'package:btcc/src/utils/image_helper.dart';
 import 'package:btcc/src/utils/navigation_helper.dart';
+import 'package:btcc/src/utils/orientation_helper.dart';
 import 'package:btcc/src/utils/typedefs.dart';
 import 'package:btcc/src/widgets/background_container.dart';
+import 'package:btcc/src/widgets/flow_breadcrumb.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -19,12 +22,14 @@ class PreCastleScreen extends StatefulWidget {
   final String imagePath;
   final ImageRotation rotation;
   final AddCastleToGameCallback addCastleCallback;
+  final String? gameTitle;
 
   PreCastleScreen({
-    @required this.imagePath,
-    @required this.addCastleCallback,
-    this.rotation,
+    required this.imagePath,
+    required this.addCastleCallback,
+    this.rotation = ImageRotation.Normal,
     this.numPicturesTaken=0,
+    this.gameTitle,
   });
 
   @override
@@ -35,8 +40,8 @@ class _PreCastleScreenState extends State<PreCastleScreen> {
 
 
   bool loading = true;
-  String error;
-  String extra;
+  String? error;
+  String? extra;
 
   @override
   void initState() {
@@ -47,7 +52,7 @@ class _PreCastleScreenState extends State<PreCastleScreen> {
     });
   }
 
-  _setError(String err, {String ext}) {
+  _setError(String err, {String? ext}) {
     setState(() {
       loading = false;
       error = err;
@@ -89,6 +94,7 @@ class _PreCastleScreenState extends State<PreCastleScreen> {
             replace: true,
             addCastleCallback: widget.addCastleCallback,
             numPicturesTaken: widget.numPicturesTaken,
+            gameTitle: widget.gameTitle,
           );
           return;
         }
@@ -104,33 +110,43 @@ class _PreCastleScreenState extends State<PreCastleScreen> {
     }
   }
 
-  Widget _getImageContainer(BuildContext context) {
+  void _cancelToGame() {
+    OrientationHelper.lockPortrait();
+    Navigator.of(context).pop();
+  }
 
-    if (widget.rotation == ImageRotation.Normal || widget.rotation == ImageRotation.OneEighty) {
-      return Container(
-        width: MediaQuery.of(context).size.width,
-        child: Hero(
-          tag: widget.imagePath,
-          child: Image.file(File(widget.imagePath),
-            fit: BoxFit.fitWidth
-          ),
-        )
-      );
-    }
+  Widget _getImageContainer(BuildContext context) {
+    final isLandscapeRotation = widget.rotation == ImageRotation.NinetyClockwise
+        || widget.rotation == ImageRotation.NinetyCounterClockwise;
 
     return Container(
-      height: MediaQuery.of(context).size.height*2/3,
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.of(context).size.width,
+        maxHeight: MediaQuery.of(context).size.height * (isLandscapeRotation ? 0.55 : 0.45),
+      ),
       child: Hero(
         tag: widget.imagePath,
-        child: Image.file(File(widget.imagePath),
-          fit: BoxFit.fitHeight
+        child: Image.file(
+          File(widget.imagePath),
+          fit: BoxFit.contain,
         ),
-      )
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: FlowBreadcrumb(
+        segments: [widget.gameTitle ?? 'Game', error != null ? 'Error' : 'Processing'],
+        onFirstSegmentTap: _cancelToGame,
+      ),
+      leading: IconButton(
+        icon: const Icon(Icons.close),
+        tooltip: 'Cancel',
+        onPressed: _cancelToGame,
+      ),
+    ),
     body: BackgroundContainer(
       child: Center(
         child: Stack(
@@ -141,11 +157,17 @@ class _PreCastleScreenState extends State<PreCastleScreen> {
               children: [
                 _getImageContainer(context),
                 Container(),
-                if(error != null) Text('There was an error while processing the image:\n$error'),
+                if(error != null) Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    'There was an error while processing the image:\n$error',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
                 if(extra != null && kDebugMode) Expanded(
                   child: ListView(
                     children: [
-                      Text(extra)
+                      Text(extra!)
                     ],
                   )
                 )
@@ -160,15 +182,35 @@ class _PreCastleScreenState extends State<PreCastleScreen> {
       ),
     ),
     floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-    floatingActionButton: error == null ? null : FloatingActionButton.extended(
-      icon: Icon(Icons.camera_alt),
-      label: Text('Go back to take a new picture'),
-      onPressed: () => NavigationHelper.goToCameraExperience(
-        context,
-        addCastleCallback: widget.addCastleCallback,
-        numPicturesTaken: widget.numPicturesTaken,
-        replace: true
-      )
+    floatingActionButton: error == null ? null : Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'cancel',
+            backgroundColor: Colors.blueGrey,
+            icon: const Icon(Icons.cancel),
+            label: const Text('Cancel'),
+            onPressed: _cancelToGame,
+          ),
+          const Spacer(),
+          Consumer<CameraStore>(
+            builder: (_, cameraStore, __) => FloatingActionButton.extended(
+              heroTag: 'retake',
+              icon: const Icon(Icons.camera_alt),
+              label: const Text('Retake'),
+              onPressed: () => NavigationHelper.goToCameraExperience(
+                context,
+                addCastleCallback: widget.addCastleCallback,
+                numPicturesTaken: widget.numPicturesTaken,
+                replace: true,
+                cameraTech: cameraStore.cameraTech,
+                gameTitle: widget.gameTitle,
+              ),
+            ),
+          ),
+        ],
+      ),
     ),
   );
 }

@@ -13,8 +13,8 @@ class GameListItem extends StatelessWidget {
   final DeleteGameCallback deleteCallback;
 
   GameListItem({
-    @required this.game,
-    @required this.deleteCallback,
+    required this.game,
+    required this.deleteCallback,
   });
 
   _onLongPress(BuildContext context) {
@@ -34,7 +34,7 @@ class GameListItem extends StatelessWidget {
   _getFlexibleCastleView(BuildContext context, Castle castle) => Flexible(
     child: Column(
       children: [
-        Text(castle.hiveCastle.title),
+        Text(castle.hiveCastle?.title ?? castle.title),
         Text(castle.getScore().toString()),
         Row(
           children: [
@@ -53,11 +53,41 @@ class GameListItem extends StatelessWidget {
   Widget build(BuildContext context) {
 
     var pair = game.getWinningCastle();
+    final winningPlayerIndex = game.getWinningPlayerIndex();
+    final winningPlayerName = winningPlayerIndex == null
+        ? null
+        : (winningPlayerIndex < game.playerNames.length
+            ? game.playerNames[winningPlayerIndex]
+            : null);
 
     List<Widget> children = [
-      Text('${StringHelper.getMonthDayYear(game.hiveGame.created)}'),
+      Text(
+        game.title,
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      ),
+      Text(
+        StringHelper.getMonthDayYear(game.hiveGame.created!),
+        style: const TextStyle(fontSize: 12, color: Colors.white70),
+      ),
       Container(height:10),
     ];
+
+    if (winningPlayerName != null) {
+      children.add(Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.emoji_events, color: Colors.green, size: 20),
+            const SizedBox(width: 6),
+            Text(
+              'Winner: $winningPlayerName',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ));
+    }
 
     if (pair != null) {
       var left = pair.key;
@@ -88,8 +118,11 @@ class GameListItem extends StatelessWidget {
           game: game,
         ),
         onLongPress: () => _onLongPress(context),
-        child: Column(
-          children: children,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            children: children,
+          ),
         ),
       )
     );

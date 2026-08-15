@@ -2,16 +2,21 @@ import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/state/camera_store.dart';
 import 'package:btcc/src/utils/typedefs.dart';
 import 'package:btcc/src/widgets/background_container.dart';
+import 'package:btcc/src/widgets/flow_breadcrumb.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'camera_screen.dart';
-
 class PreCameraScreen extends StatelessWidget {
 
   final int numPicturesTaken;
   final AddCastleToGameCallback addCastleCallback;
-  PreCameraScreen({@required this.addCastleCallback, this.numPicturesTaken=0});
+  final String? gameTitle;
+  PreCameraScreen({
+    required this.addCastleCallback,
+    this.numPicturesTaken=0,
+    this.gameTitle,
+  });
 
   @override
   Widget build(BuildContext context) => Consumer<CameraStore>(builder: (_, model, child) {
@@ -20,6 +25,7 @@ class PreCameraScreen extends StatelessWidget {
         cameras: model.cameras,
         addCastleCallback: addCastleCallback,
         numPicturesTaken: numPicturesTaken,
+        gameTitle: gameTitle,
       );
     }
 
@@ -44,6 +50,12 @@ class PreCameraScreen extends StatelessWidget {
     );
 
     return Scaffold(
+        appBar: AppBar(
+          title: FlowBreadcrumb(
+            segments: [gameTitle ?? 'Game', 'Camera'],
+            onFirstSegmentTap: () => Navigator.of(context).pop(),
+          ),
+        ),
         body: BackgroundContainer(
           child: Center(
             child: Column(

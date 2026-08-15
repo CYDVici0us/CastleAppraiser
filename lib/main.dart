@@ -1,4 +1,3 @@
-
 import 'package:btcc/src/app/app.dart';
 import 'package:btcc/src/utils/asset_helper.dart';
 import 'package:flutter/material.dart';
@@ -11,7 +10,7 @@ import 'dart:io';
 
 Future<void> main() async {
   if (kReleaseMode) {
-    debugPrint = (String message, {int wrapWidth}) {};
+    debugPrint = (String? message, {int? wrapWidth}) {};
   }
 
   WidgetsFlutterBinding.ensureInitialized();

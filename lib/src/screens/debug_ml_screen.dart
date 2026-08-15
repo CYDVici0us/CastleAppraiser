@@ -19,7 +19,7 @@ import 'package:btcc/src/widgets/guess_canvas.dart';
 
 class DebugMLScreen extends StatefulWidget {
 
-  final String imagePath;
+  final String? imagePath;
 
   DebugMLScreen(this.imagePath);
 
@@ -31,8 +31,8 @@ class DebugMLScreenState extends State<DebugMLScreen> {
 
   List<TfliteProcessedGuess> guesses = [];
   List<TileLabels> filters = [];
-  ui.Image decodedImage;
-  Map<String, IfdTag> exifData;
+  ui.Image? decodedImage;
+  Map<String, IfdTag>? exifData;
   bool running = false;
   
   double scoreThreshold = .7;
@@ -40,7 +40,7 @@ class DebugMLScreenState extends State<DebugMLScreen> {
   double mean = 127.5;
   double std = 127.5;
   int rotations = 1;
-  String imagePath;
+  String? imagePath;
 
   DebugMLScreenState(this.imagePath);
 
@@ -55,10 +55,10 @@ class DebugMLScreenState extends State<DebugMLScreen> {
     if (exifData == null) {
       return false;
     }
-    if(exifData['Image Orientation'] == null){
+    if(exifData!['Image Orientation'] == null){
       return true;
     }
-    int rotation = exifData['Image Orientation'].values.firstAsInt();
+    int rotation = exifData!['Image Orientation']!.values.firstAsInt();
     log('Rotation $rotation');
     if (rotation == 1 || rotation == 3 || rotation == 6 || rotation == 8) {
       return true;
@@ -73,7 +73,7 @@ class DebugMLScreenState extends State<DebugMLScreen> {
       return;
     }
 
-    File image = new File(this.imagePath);
+    File image = new File(this.imagePath!);
     var bytes = await image.readAsBytes();
     var data = await readExifFromBytes(bytes);
     //print(data);
@@ -90,8 +90,8 @@ class DebugMLScreenState extends State<DebugMLScreen> {
     child: Text(item.toFormattedString()),
   );
 
-  Widget getGuessesCanvas({double height, double width, 
-    ui.Image image}) {
+  Widget getGuessesCanvas({required double height, required double width, 
+    ui.Image? image}) {
 
     if (image == null) {
       return Container(
@@ -118,7 +118,7 @@ class DebugMLScreenState extends State<DebugMLScreen> {
       return Container();
     }
 
-    List<TileLabels> distinctLabels = guesses.map((e) => e.label).toSet().toList();
+    List<TileLabels> distinctLabels = guesses.map((e) => e.label as TileLabels).toSet().toList();
     return Container(
       height: 50,
       child: ListView.builder(
@@ -150,7 +150,7 @@ class DebugMLScreenState extends State<DebugMLScreen> {
                 Container(
                   height: 20,
                   width: 20,
-                  color: AssetHelper().labelToColorMap[distinctLabels[index]],
+                  color: AssetHelper().labelToColorMap[distinctLabels[index].toString()],
                 )
               ],
             )
@@ -190,14 +190,14 @@ class DebugMLScreenState extends State<DebugMLScreen> {
           child: Text('${store.modelPath}'),
           onPressed: () async {
             var file = await FilePicker.platform.pickFiles();
-            store.modelPath = file.files.first.path;
+            store.modelPath = file!.files.first.path!;
           },
         ),
         ElevatedButton(
           child: Text('${store.labelsPath}'),
           onPressed: () async {
             var file = await FilePicker.platform.pickFiles();
-            store.labelsPath = file.files.first.path;
+            store.labelsPath = file!.files.first.path!;
           },
         ),
         ElevatedButton(
@@ -221,10 +221,12 @@ class DebugMLScreenState extends State<DebugMLScreen> {
               Text('Resolution:'),
               Expanded(child: Container()),
               Consumer<CameraStore>(
-                builder: (_, cameraStore, __) => DropdownButton(
+                builder: (_, cameraStore, __) => DropdownButton<ResolutionPreset>(
                   value: cameraStore.resolution,
-                  onChanged: (x) {
-                    cameraStore.resolution = x;
+                  onChanged: (ResolutionPreset? x) {
+                    if (x != null) {
+                      cameraStore.resolution = x;
+                    }
                   },
                   items: ResolutionPreset.values.map((e) => DropdownMenuItem(
                     child: Text(e.toString()),
@@ -241,10 +243,12 @@ class DebugMLScreenState extends State<DebugMLScreen> {
               Text('CameraTech:'),
               Expanded(child: Container()),
               Consumer<CameraStore>(
-                builder: (_, cameraStore, __) => DropdownButton(
+                builder: (_, cameraStore, __) => DropdownButton<CameraTech>(
                   value: cameraStore.cameraTech,
-                  onChanged: (x) {
-                    cameraStore.cameraTech = x;
+                  onChanged: (CameraTech? x) {
+                    if (x != null) {
+                      cameraStore.cameraTech = x;
+                    }
                   },
                   items: CameraTech.values.map((e) => DropdownMenuItem(
                     child: Text(e.toString()),
@@ -261,12 +265,13 @@ class DebugMLScreenState extends State<DebugMLScreen> {
               Text('Model:'),
               Expanded(child: Container()),
               Consumer<TfStore>(
-                builder: (_, tfStore, __) => DropdownButton(
+                builder: (_, tfStore, __) => DropdownButton<String>(
                   value: tfStore.modelPath,
                   style: TextStyle(
                     fontSize: 10,
                   ),
-                  onChanged: (x) async {
+                  onChanged: (String? x) async {
+                    if (x == null) return;
                     var model = TfliteModel.modelFromPath(x);
                     await tfStore.init(model, true);
                   },
@@ -332,7 +337,7 @@ class DebugMLScreenState extends State<DebugMLScreen> {
     return Container(
       decoration: BoxDecoration(
         image: DecorationImage(
-          image: FileImage(File(imagePath)),
+          image: FileImage(File(imagePath!)),
           fit: BoxFit.contain,
         ),
       ),
@@ -357,20 +362,12 @@ class DebugMLScreenState extends State<DebugMLScreen> {
           child: Text('Run model'),
           onPressed: (store.running || imagePath == null) ? null : () async {
 
-            var res = await store.runOnImage(imagePath);
+            var res = await store.runOnImage(imagePath!);
             setState(() {
               guesses = res;
             });
           },
         )),
-        // Consumer<TfStore>(builder: (ctx, store, child) => RaisedButton(
-        //   child: Text('Go to castle'),
-        //   onPressed: store.running ? null : () => NavigationHelper.goToPreCastleScreen(
-        //     context, 
-        //     imagePath, 
-        //     addCastleCallback: (x, str, i) async => log('done')
-        //   ),
-        // )),
         Container(height: 10),
         getColorKey(),
 

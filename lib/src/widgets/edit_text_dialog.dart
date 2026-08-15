@@ -4,13 +4,13 @@ class EditTextDialog extends StatefulWidget {
 
   final String confirmationText;
   final void Function(String) onPressedYes;
-  final void Function() onPressedNo;
+  final void Function()? onPressedNo;
   final bool popOnYes;
   final String defaultText;
 
   EditTextDialog({
-    @required this.confirmationText,
-    @required this.onPressedYes,
+    required this.confirmationText,
+    required this.onPressedYes,
     this.defaultText='',
     this.onPressedNo,
     this.popOnYes=true,
@@ -22,22 +22,22 @@ class EditTextDialog extends StatefulWidget {
 
 class _EditTextDialogState extends State<EditTextDialog> {
 
-  String text='';
+  late TextEditingController _controller;
 
   @override
   void initState() {
     super.initState();
-    text = widget.defaultText;
+    _controller = TextEditingController(text: widget.defaultText);
   }
 
   @override
   void dispose() {
+    _controller.dispose();
     super.dispose();
   }
 
   onPressedYes(BuildContext context) {
-
-    widget.onPressedYes(text);
+    widget.onPressedYes(_controller.text);
 
     if (widget.popOnYes) {
       Navigator.pop(context);
@@ -45,16 +45,13 @@ class _EditTextDialogState extends State<EditTextDialog> {
   }
 
   List<Widget> _getActions(BuildContext context) => <Widget>[
-    // FlatButton(
-    //     child: Text('Back'),
-    //     onPressed: (){
-    //       if (widget.onPressedNo != null) {
-    //         widget.onPressedNo();
-    //       }
-
-    //       Navigator.pop(context, false);
-    //     }
-    // ),
+    TextButton(
+      child: Text('Cancel'),
+      onPressed: () {
+        widget.onPressedNo?.call();
+        Navigator.pop(context);
+      },
+    ),
     TextButton(
       child: Text('Save'),
       onPressed: () async => await onPressedYes(context),
@@ -66,14 +63,10 @@ class _EditTextDialogState extends State<EditTextDialog> {
     children: [
       Text(widget.confirmationText),
       TextField(
+        controller: _controller,
         autofocus: true,
         textAlign: TextAlign.center,
         showCursor: true,
-        onChanged: (str) {
-          setState((){
-            text = str;
-          });
-        }
       )
     ],
   );

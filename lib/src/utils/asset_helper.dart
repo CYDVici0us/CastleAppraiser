@@ -1,9 +1,7 @@
 
 
 import 'dart:math';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
-import 'dart:ui';
 import 'package:btcc/src/models/enums/identify_labels.dart';
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/widgets/tile/tile_widget.dart';
@@ -29,9 +27,6 @@ class AssetHelper {
   }
 
   factory AssetHelper() {
-    if (_instance == null) {
-      _instance = new AssetHelper._private();
-    }
     return _instance;
   }
 

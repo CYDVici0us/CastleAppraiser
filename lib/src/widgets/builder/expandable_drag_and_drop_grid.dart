@@ -5,7 +5,7 @@ import 'package:btcc/src/utils/log.dart';
 
 import 'drag_and_drop_grid.dart';
 
-class ExpandableDragAndDropGrid<T> extends StatelessWidget {
+class ExpandableDragAndDropGrid<T extends Object> extends StatelessWidget {
 
   final GridList<T> gridList;
   final CreateItemCallback<T> getEmpty;
@@ -17,22 +17,22 @@ class ExpandableDragAndDropGrid<T> extends StatelessWidget {
   final bool replaceWithEmptyOnDragStart;
   final IndexItemCallback<T> onDropOnItem;
   final DragItemCallback onDragItem;
-  final ExpandCollapseCallback onExpandCollapse;
+  final ExpandCollapseCallback<T> onExpandCollapse;
   final IndexItemCallback<T> onDragCancelled;
 
   ExpandableDragAndDropGrid({
-    @required this.gridList,
-    @required this.getEmpty,
-    @required this.builder,
-    @required this.feedback,
-    @required this.wrapperOnDropHover,
-    @required this.canDragItem,
-    @required this.canDropOnItem,
+    required this.gridList,
+    required this.getEmpty,
+    required this.builder,
+    required this.feedback,
+    required this.wrapperOnDropHover,
+    required this.canDragItem,
+    required this.canDropOnItem,
     this.replaceWithEmptyOnDragStart=true,
-    @required this.onDropOnItem,
-    @required this.onDragItem,
-    @required this.onExpandCollapse,
-    @required this.onDragCancelled,
+    required this.onDropOnItem,
+    required this.onDragItem,
+    required this.onExpandCollapse,
+    required this.onDragCancelled,
   });
 
   @override

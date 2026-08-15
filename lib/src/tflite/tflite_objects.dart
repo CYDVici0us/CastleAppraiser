@@ -7,7 +7,6 @@ import 'dart:math' hide log;
 import 'package:btcc/src/models/enums/identify_labels.dart';
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/utils/log.dart';
-import 'package:flutter/material.dart';
 
 class ProcessIndividualTfResultParams {
   final List individualResult;
@@ -20,14 +19,14 @@ class ProcessIndividualTfResultParams {
   final int yNumBlocks;
 
   ProcessIndividualTfResultParams({
-    @required this.individualResult,
-    @required this.tensorOutputIndex,
-    @required this.imageResultsIndex,
-    @required this.x,
-    @required this.y,
-    @required this.pass,
-    @required this.xNumBlocks,
-    @required this.yNumBlocks,
+    required this.individualResult,
+    required this.tensorOutputIndex,
+    required this.imageResultsIndex,
+    required this.x,
+    required this.y,
+    required this.pass,
+    required this.xNumBlocks,
+    required this.yNumBlocks,
   });
 }
 
@@ -63,14 +62,14 @@ class TfliteProcessedGuess<T> {
   final double score;
 
   TfliteProcessedGuess({
-    this.xMin,
-    this.xMax,
-    this.yMin,
-    this.yMax,
-    this.label,
-    this.probability,
-    this.confidence,
-    this.score
+    required this.xMin,
+    required this.xMax,
+    required this.yMin,
+    required this.yMax,
+    required this.label,
+    required this.probability,
+    required this.confidence,
+    required this.score
   });
 
   @override
@@ -196,14 +195,14 @@ class TfliteRawLabelGuess {
   final String xyDims;
 
   TfliteRawLabelGuess({
-    @required this.x,
-    @required this.y,
-    @required this.height,
-    @required this.width,
-    @required this.label,
-    @required this.probability,
-    @required this.confidence,
-    @required this.score,
+    required this.x,
+    required this.y,
+    required this.height,
+    required this.width,
+    required this.label,
+    required this.probability,
+    required this.confidence,
+    required this.score,
     this.pass=-1,
     this.tensor=-1,
     this.xyDims='NOT_SET',

@@ -8,7 +8,7 @@ part of 'hive_game.dart';
 
 class HiveGameAdapter extends TypeAdapter<HiveGame> {
   @override
-  final int typeId = 3;
+  final typeId = 3;
 
   @override
   HiveGame read(BinaryReader reader) {
@@ -17,22 +17,28 @@ class HiveGameAdapter extends TypeAdapter<HiveGame> {
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return HiveGame(
-      created: fields[0] as DateTime,
-      updated: fields[1] as DateTime,
-      castles: (fields[2] as HiveList)?.castHiveList(),
+      created: fields[0] as DateTime?,
+      updated: fields[1] as DateTime?,
+      castles: (fields[2] as HiveList?)?.castHiveList(),
+      title: fields[3] as String?,
+      playerNames: (fields[4] as List?)?.cast<String>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveGame obj) {
     writer
-      ..writeByte(3)
+      ..writeByte(5)
       ..writeByte(0)
       ..write(obj.created)
       ..writeByte(1)
       ..write(obj.updated)
       ..writeByte(2)
-      ..write(obj.castles);
+      ..write(obj.castles)
+      ..writeByte(3)
+      ..write(obj.title)
+      ..writeByte(4)
+      ..write(obj.playerNames);
   }
 
   @override

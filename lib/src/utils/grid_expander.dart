@@ -6,7 +6,7 @@ import 'package:btcc/src/utils/typedefs.dart';
 typedef GridListValidItemCheck<T> = bool Function(T);
 typedef GridListItemDeserializer<T> = List<T> Function(List<String>);
 
-class GridList<T> {
+class GridList<T extends Object> {
   final int width;
   final List<T> items;
 
@@ -67,7 +67,7 @@ class GridList<T> {
     return false;
   }
 
-  static GridList<T> fromMap<T>(Map map, GridListItemDeserializer<T> deserializer) {
+  static GridList<T> fromMap<T extends Object>(Map map, GridListItemDeserializer<T> deserializer) {
     return new GridList<T>(
       map['width'],
       deserializer(map['items'])
@@ -95,7 +95,7 @@ class GridList<T> {
   }
 }
 
-class GridListExpander<T> {
+class GridListExpander<T extends Object> {
   final GridList<T> input;
   final GridListValidItemCheck<T> isNonBlankNonEmpty;
   final CreateItemCallback<T> getEmpty;

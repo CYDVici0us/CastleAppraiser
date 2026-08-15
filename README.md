@@ -1,6 +1,10 @@
-# Castle Appraiser
+# Castle Appraiser 2.0
 
-[www.castleappraiser.com](https://www.castleappraiser.com/)
+[cydvicious.com/castle-app-2](https://cydvicious.com/castle-app-2/)
+
+## Credits
+
+Huge thanks and kudos to **Mitch Hymel**, who created the original [Castle Appraiser](https://github.com/mitchhymel/CastleAppraiser). This project builds on that work.
 
 An unofficial companion app for [Between Two Castles of Mad King Ludwig](https://stonemaiergames.com/games/between-two-castles) from [Stonemaier Games](https://stonemaiergames.com/) .This is not an official Stonemaier Games product. We do not own any of the art used to represent the game tiles. We are not affiliated with Stonemaier Games.
 

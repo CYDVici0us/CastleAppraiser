@@ -3,49 +3,113 @@ import 'dart:collection';
 import 'dart:math';
 
 import 'package:btcc/src/models/exports.dart';
+import 'package:btcc/src/utils/player_helper.dart';
+import 'package:btcc/src/utils/string_helper.dart';
 
 class Game {
 
   UnmodifiableListView<Castle> get castles {
-    return UnmodifiableListView(hiveGame.castles.map((e) => Castle.fromHiveCastle(e)).toList());
+    return UnmodifiableListView((hiveGame.castles ?? []).map((e) => Castle.fromHiveCastle(e)).toList());
   }
-  HiveGame hiveGame;
+
+  String get title {
+    final t = hiveGame.title;
+    if (t != null && t.trim().isNotEmpty) return t.trim();
+    if (hiveGame.created != null) {
+      return StringHelper.getMonthDayYear(hiveGame.created!);
+    }
+    return 'Game';
+  }
+
+  UnmodifiableListView<String> get playerNames {
+    return UnmodifiableListView(List<String>.from(hiveGame.playerNames ?? const []));
+  }
+
+  UnmodifiableListView<String> get slottedPlayers {
+    final n = castles.length;
+    final all = playerNames;
+    if (n == 0) return UnmodifiableListView(const []);
+    return UnmodifiableListView(all.take(n).toList());
+  }
+
+  UnmodifiableListView<String> get benchPlayers {
+    final n = castles.length;
+    final all = playerNames;
+    if (all.length <= n) return UnmodifiableListView(const []);
+    return UnmodifiableListView(all.skip(n).toList());
+  }
+
+  late HiveGame hiveGame;
 
   Game.fromHiveGame(HiveGame hiveGame) {
     this.hiveGame = hiveGame;
-
-    // Need to recalculate scores of castles because when they are created
-    // via fromHiveCastle, they don't know their adjacent castles
     recalculateScores();
   }
 
-  MapEntry<Castle, Castle> getWinningCastle() {
+  /// Index of the left castle in the winning adjacent pair, or null.
+  int? getWinningPairLeftIndex() {
     if (castles.length < 3) {
-      return null; //todo fix?
+      return null;
     }
 
     int bestScore = -1;
-    MapEntry<Castle, Castle> best;
+    int? bestLeft;
+    MapEntry<Castle, Castle>? best;
+
     for (int i = 0; i < castles.length; i++) {
       Castle left = castles[i];
-      Castle right = castles[(i+1)%castles.length];
-
-      var entry = new MapEntry<Castle, Castle>(left, right);
+      Castle right = castles[(i + 1) % castles.length];
+      var entry = MapEntry<Castle, Castle>(left, right);
       int score = getLowerScoreFromPair(entry);
 
-      if (score == bestScore) {
-        //tiebreak
-        var tieBreak = breakTie(best, entry);
-        bestScore = getLowerScoreFromPair(tieBreak);
-        best = tieBreak;
-      }
-      else if (score > bestScore) {
+      if (best == null || score > bestScore) {
         bestScore = score;
         best = entry;
+        bestLeft = i;
+      } else if (score == bestScore) {
+        var tieBreak = breakTie(best, entry);
+        best = tieBreak;
+        bestScore = getLowerScoreFromPair(tieBreak);
+        if (_samePair(tieBreak, entry)) {
+          bestLeft = i;
+        }
       }
     }
 
-    return best;
+    return bestLeft;
+  }
+
+  bool _samePair(MapEntry<Castle, Castle> a, MapEntry<Castle, Castle> b) {
+    final aKey = a.key.hiveCastle?.key;
+    final aVal = a.value.hiveCastle?.key;
+    final bKey = b.key.hiveCastle?.key;
+    final bVal = b.value.hiveCastle?.key;
+    return aKey != null && aVal != null && aKey == bKey && aVal == bVal;
+  }
+
+  int? getWinningPlayerIndex() {
+    return PlayerHelper.winningPlayerIndexForPair(
+      getWinningPairLeftIndex(),
+      castles.length,
+    );
+  }
+
+  MapEntry<Castle, Castle>? getWinningCastle() {
+    final leftIndex = getWinningPairLeftIndex();
+    if (leftIndex == null) return null;
+    return MapEntry(
+      castles[leftIndex],
+      castles[(leftIndex + 1) % castles.length],
+    );
+  }
+
+  int? getPlayerScore(int playerIndex) {
+    if (playerIndex < 0 || playerIndex >= castles.length || castles.length < 3) {
+      return null;
+    }
+    final left = castles[playerIndex];
+    final right = castles[(playerIndex + 1) % castles.length];
+    return getLowerScoreFromPair(MapEntry(left, right));
   }
 
   MapEntry<Castle, Castle> breakTie(MapEntry<Castle, Castle> a,
@@ -69,9 +133,6 @@ class Game {
         return b;
       }
       else {
-        // you share the victory !!!
-        // ... but for now just go with a
-        // TODO: fix
         return a;
       }
     }
@@ -90,8 +151,6 @@ class Game {
   }
 
   void recalculateScores() {
-    // If there are only two castles, things might get weird using left and
-    // right ... no need to recalculate
     if (castles.length < 3) {
       return;
     }

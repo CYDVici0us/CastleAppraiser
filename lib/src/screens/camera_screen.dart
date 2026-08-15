@@ -1,15 +1,14 @@
 import 'dart:io';
 
 import 'package:btcc/src/state/camera_store.dart';
+import 'package:btcc/src/state/data_store.dart';
 import 'package:btcc/src/state/tf_store.dart';
 import 'package:btcc/src/tflite/tflite_objects.dart';
-import 'package:btcc/src/utils/log.dart';
-import 'package:btcc/src/state/data_store.dart';
 import 'package:btcc/src/utils/image_helper.dart';
+import 'package:btcc/src/utils/log.dart';
 import 'package:btcc/src/utils/navigation_helper.dart';
+import 'package:btcc/src/utils/orientation_helper.dart';
 import 'package:btcc/src/utils/typedefs.dart';
-import 'package:btcc/src/widgets/button_padding.dart';
-import 'package:btcc/src/widgets/guess_canvas.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,10 +19,12 @@ class CameraScreen extends StatefulWidget {
   final int numPicturesTaken;
   final List<CameraDescription> cameras;
   final AddCastleToGameCallback addCastleCallback;
+  final String? gameTitle;
   CameraScreen({
-    @required this.cameras,
-    @required this.addCastleCallback,
+    required this.cameras,
+    required this.addCastleCallback,
     this.numPicturesTaken=0,
+    this.gameTitle,
   });
 
   @override
@@ -31,12 +32,12 @@ class CameraScreen extends StatefulWidget {
 }
 
 class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMixin {
-  CameraController controller;
-  bool controllerInitialized;
+  late CameraController controller;
+  late bool controllerInitialized;
 
   _CameraScreenState();
 
-  String imagePath;
+  String? imagePath;
   bool savingImage = false;
   double _startScaleFactor = 1;
   double _scaleFactor = 1;
@@ -73,8 +74,6 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
           _zoomMax = await controller.getMaxZoomLevel();
           print('Zoom: $_zoomMin, $_zoomMax');
 
-          // await controller.setFocusMode(FocusMode.auto);
-
           controller.startImageStream((image) async {
             if (!mounted) {
               return;
@@ -87,9 +86,6 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
                 guesses = res;
               });
             }
-            //image.planes[0].bytes;
-
-            //print('on image: ${image.width}x${image.height}');
           });
 
           setState(() {controllerInitialized = true;});
@@ -107,18 +103,16 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
 
   @override
   void dispose() {
-    controller?.dispose();
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]);
+    controller.dispose();
+    const MethodChannel _channel = const MethodChannel('com.btcc.app/camera');
+    _channel.invokeMethod('setUserOrientation');
+    OrientationHelper.lockPortrait();
 
     super.dispose();
   }
 
   bool _readyForPicture() {
-    return controller != null &&
-        controller.value.isInitialized &&
+    return controller.value.isInitialized &&
         !controller.value.isTakingPicture;
   }
 
@@ -133,7 +127,7 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
     });
 
     logNow(tag:'1TakePicture');
-    String res = await _takePicture(dirPath);
+    String? res = await _takePicture(dirPath);
     logNow(tag:'2TakePicture');
 
     if (res == null) {
@@ -147,18 +141,18 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
 
     var rotation = await ImageHelper.getImageRotation(res);
 
-    // Don't need to set state since we go directly to precastle screen
     NavigationHelper.goToPreCastleScreen(context, res,
       rotation: rotation,
       replace: true,
       addCastleCallback: widget.addCastleCallback,
       numPicturesTaken: widget.numPicturesTaken+1,
+      gameTitle: widget.gameTitle,
     );
   }
 
   String timestamp() => DateTime.now().millisecondsSinceEpoch.toString();
 
-  Future<String> _takePicture(String dirPath) async {
+  Future<String?> _takePicture(String dirPath) async {
     if (!_readyForPicture()) {
       log('still not ready for picture');
       return '';
@@ -175,10 +169,8 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
 
       final String filePath = '$dirPath/${timestamp()}.jpg';
 
-      // Save picture to File storage
       await picture.saveTo(filePath);
 
-      // Remove old picture from cache
       File file = new File(picture.path);
       await file.delete();
 
@@ -189,123 +181,173 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
     }
   }
 
-  //Widget _cameraPreviewWidget() => CameraPreview(controller);
+  /// Fills available space with cover-fit. Avoids orientation-specific
+  /// width/height formulas that lag one rotation behind.
+  Widget _cameraPreviewWidget(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapUp: (details) async {
+        final box = context.findRenderObject() as RenderBox?;
+        if (box == null || !box.hasSize) return;
+        final local = box.globalToLocal(details.globalPosition);
+        final x = (local.dx / box.size.width).clamp(0.0, 1.0);
+        final y = (local.dy / box.size.height).clamp(0.0, 1.0);
+        await controller.setFocusPoint(Offset(x, y));
+      },
+      onScaleStart: (details) {
+        _startScaleFactor = _scaleFactor;
+      },
+      onScaleUpdate: (details) {
+        _scaleFactor = _startScaleFactor * details.scale;
 
-  Widget _cameraPreviewWidget(BuildContext context) => GestureDetector(
-    behavior: HitTestBehavior.opaque,
-    onTapUp: (details) async {
-      var size = MediaQuery.of(context).size;
-      double x = details.globalPosition.dx / size.width;
-      double y = details.globalPosition.dy / size.height;
-      await controller.setFocusPoint(Offset(x, y));
+        if (_scaleFactor < _zoomMin) {
+          _scaleFactor = _zoomMin;
+        }
 
-    },
-    onScaleStart: (details) {
-      _startScaleFactor = _scaleFactor;
-    },
-    onScaleUpdate: (details) {
-      _scaleFactor = _startScaleFactor * details.scale;
+        if (_scaleFactor > _zoomMax) {
+          _scaleFactor = _zoomMax;
+        }
 
-      if (_scaleFactor < _zoomMin) {
-        _scaleFactor = _zoomMin;
-      }
+        controller.setZoomLevel(_scaleFactor);
+      },
+      onScaleEnd: (details) async {
+        _startScaleFactor = 1;
+      },
+      child: ColoredBox(
+        color: Colors.black,
+        child: SizedBox.expand(
+          child: !controller.value.isInitialized
+              ? const SizedBox.shrink()
+              : FittedBox(
+                  fit: BoxFit.cover,
+                  clipBehavior: Clip.hardEdge,
+                  child: SizedBox(
+                    // Match CameraPreview's AspectRatio so FittedBox can scale it.
+                    width: 1000,
+                    height: 1000 / controller.value.aspectRatio,
+                    child: CameraPreview(controller),
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
 
-      if (_scaleFactor > _zoomMax) {
-        _scaleFactor = _zoomMax;
-      }
+  void _goBack() {
+    OrientationHelper.lockPortrait();
+    Navigator.of(context).pop();
+  }
 
-      controller.setZoomLevel(_scaleFactor);
-    },
-    onScaleEnd: (details) async {
-      _startScaleFactor = 1;
-    },
-    child: AspectRatio(
-      aspectRatio: controller.value.aspectRatio,
-      child: Stack(
-        children: [
-          CameraPreview(controller),
-          // GuessCanvas(
-          //   canvasSize: MediaQuery.of(context).size,
-          //   imageWidth: MediaQuery.of(context).size.width.toInt(),
-          //   imageHeight: MediaQuery.of(context).size.height.toInt(),
-          //   guesses: guesses,
-          //   colorMap: AssetHelper().identifyLabelToColorMap,
-          // ),
-        ],
-      )
-    )
-  );
-
-  Widget _controlsWidget(String dirPath) => Container(
-    child: FloatingActionButton(
-      heroTag: null,
+  Widget _controlsWidget(String dirPath, {required bool portrait}) {
+    final backButton = FloatingActionButton(
+      heroTag: 'camera_back',
+      backgroundColor: Colors.blueGrey,
+      onPressed: _goBack,
+      child: const Icon(Icons.arrow_back),
+    );
+    final shutterButton = FloatingActionButton(
+      heroTag: 'camera_shutter',
       onPressed: savingImage ? null : () => _onTakePicturePressed(dirPath),
-      //child: Icon(Icons.camera),
-      child: !savingImage ? Icon(Icons.camera) : CircularProgressIndicator(
-        valueColor: new AlwaysStoppedAnimation<Color>(Colors.white),
-      )
-    )
-  );
+      child: !savingImage
+          ? const Icon(Icons.camera)
+          : const CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+    );
+
+    if (portrait) {
+      return SizedBox(
+        height: 96,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            shutterButton,
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 24),
+                child: backButton,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: 96,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          shutterButton,
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: backButton,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     if (!controllerInitialized) {
       return Scaffold(
-        body: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
+        backgroundColor: Colors.black,
+        body: Stack(
           children: [
-            CircularProgressIndicator(),
-            Container(height: 20,),
-            Text('Initializing cameras...'),
+            const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 20),
+                  Text(
+                    'Initializing cameras...',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              top: MediaQuery.paddingOf(context).top + 8,
+              left: 8,
+              child: FloatingActionButton(
+                heroTag: 'camera_back_loading',
+                mini: true,
+                backgroundColor: Colors.blueGrey,
+                onPressed: _goBack,
+                child: const Icon(Icons.arrow_back),
+              ),
+            ),
           ],
-        )
+        ),
       );
     }
 
-    return OrientationBuilder(
-      builder: (_, orientation) {
-        double height = 0;
-        double width = 0;
-        var size = MediaQuery.of(context).size;
-        if (orientation == Orientation.portrait) {
-          height = size.width*controller.value.aspectRatio;
-          width = size.width;
+    return Consumer<DataStore>(
+      builder: (_, model, __) {
+        final portrait =
+            MediaQuery.orientationOf(context) == Orientation.portrait;
+        final preview = Expanded(
+          child: _cameraPreviewWidget(context),
+        );
+        final controls = _controlsWidget(
+          model.imagesTempPath,
+          portrait: portrait,
+        );
 
-          return Consumer<DataStore>(builder: (_, model, child) => Scaffold(
-            body: Column(
-              children: [
-                Container(
-                  height: height,
-                  width: width,
-                  child: _cameraPreviewWidget(context),
-                ),
-                Expanded(
-                  child: _controlsWidget(model.imagesTempPath)
-                )
-              ],
-            ),
-          ));
-        }
-        else {
-          height = size.height;
-          width = size.height*controller.value.aspectRatio;
-
-          return Consumer<DataStore>(builder: (_, model, child) => Scaffold(
-            body: Row(
-              children: [
-                Container(
-                  height: height,
-                  width: width,
-                  child: _cameraPreviewWidget(context),
-                ),
-                Expanded(
-                  child: _controlsWidget(model.imagesTempPath)
-                ),
-              ],
-            ),
-          ));
-        }
+        return Scaffold(
+          backgroundColor: Colors.black,
+          body: SafeArea(
+            child: portrait
+                ? Column(children: [preview, controls])
+                : Row(children: [preview, controls]),
+          ),
+        );
       },
     );
   }

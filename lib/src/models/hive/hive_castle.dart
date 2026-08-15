@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:hive/hive.dart';
+import 'package:hive_ce/hive.dart';
 import 'package:btcc/src/models/exports.dart';
 
 part 'hive_castle.g.dart';
@@ -9,22 +9,22 @@ part 'hive_castle.g.dart';
 class HiveCastle extends HiveObject {
 
   @HiveField(0)
-  List<TileId> tiles;
+  List<TileId>? tiles;
 
   @HiveField(1)
-  int tileWidth;
+  int? tileWidth;
 
   @HiveField(2)
-  String imagePath;
+  String? imagePath;
   
   @HiveField(3)
-  DateTime created;
+  DateTime? created;
   
   @HiveField(4)
-  DateTime updated;
+  DateTime? updated;
 
   @HiveField(5)
-  String title;
+  String? title;
 
   HiveCastle({
     this.tiles,
@@ -38,8 +38,8 @@ class HiveCastle extends HiveObject {
   HiveCastle.fromCastle(Castle castle) {
     this.tileWidth = castle.castleTiles.width;
     this.tiles = castle.castleTiles.items.map((e) => e.id).toList();
-    this.imagePath = castle.hiveCastle == null ? "" : castle.hiveCastle.imagePath;
-    this.created = castle.hiveCastle == null ? DateTime.now() : castle.hiveCastle.created;
+    this.imagePath = castle.hiveCastle == null ? "" : castle.hiveCastle!.imagePath;
+    this.created = castle.hiveCastle == null ? DateTime.now() : castle.hiveCastle!.created;
     this.updated = DateTime.now();
     this.title = castle.title;
   }

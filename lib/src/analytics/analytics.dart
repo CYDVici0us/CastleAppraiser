@@ -10,7 +10,7 @@ class AnalyticsEvents {
 
 class Analytics {
   static Future<void> logPictureToCastleConversionError(String err) async {
-    FirebaseAnalytics analytics = FirebaseAnalytics();
+    FirebaseAnalytics analytics = FirebaseAnalytics.instance;
     await analytics.logEvent(
       name: AnalyticsEvents.PictureToCastleConversionError,
       parameters: {
@@ -20,7 +20,7 @@ class Analytics {
   }
 
   static Future<void> logCastleSavedFromCastleBuilder(int numPictures) async {
-    FirebaseAnalytics analytics = FirebaseAnalytics();
+    FirebaseAnalytics analytics = FirebaseAnalytics.instance;
     await analytics.logEvent(
       name: AnalyticsEvents.CastleSavedFromCastleBuilder,
       parameters: {
@@ -30,7 +30,7 @@ class Analytics {
   }
 
   static Future<void> logCastleSavedFromPicture(int numPictures) async {
-    FirebaseAnalytics analytics = FirebaseAnalytics();
+    FirebaseAnalytics analytics = FirebaseAnalytics.instance;
     await analytics.logEvent(
       name: AnalyticsEvents.CastleSavedFromPicture,
       parameters: {

@@ -1,4 +1,3 @@
-
 import 'dart:io';
 
 import 'package:btcc/src/models/exports.dart';
@@ -11,8 +10,8 @@ class CastleImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     bool showPlaceholder = castle.hiveCastle == null 
-      || castle.hiveCastle.imagePath == null
-      || castle.hiveCastle.imagePath == "";
+      || castle.hiveCastle!.imagePath == null
+      || castle.hiveCastle!.imagePath == "";
 
     Widget child = Container();
     if (showPlaceholder) {
@@ -20,8 +19,8 @@ class CastleImage extends StatelessWidget {
     }
     else {
       child = Hero(
-        tag: castle.hiveCastle.imagePath,
-        child: Image.file(File(castle.hiveCastle.imagePath),
+        tag: castle.hiveCastle!.imagePath!,
+        child: Image.file(File(castle.hiveCastle!.imagePath!),
           height: 200,
           fit: BoxFit.contain,
         ),

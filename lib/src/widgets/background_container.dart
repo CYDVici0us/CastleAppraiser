@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 class BackgroundContainer extends StatelessWidget {
 
   final Widget child;
-  BackgroundContainer({@required this.child});
+  BackgroundContainer({required this.child});
 
   @override
   Widget build(BuildContext context) => Container(

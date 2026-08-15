@@ -1,21 +1,19 @@
 import 'dart:convert';
 
 import 'package:btcc/src/utils/grid_expander.dart';
-import 'package:btcc/src/utils/log.dart';
 import 'package:btcc/src/utils/tile_helper.dart';
-import 'package:flutter/foundation.dart';
 
 import 'package:btcc/src/models/exports.dart';
 import 'dart:collection';
 
 class Castle {
 
-  GridList<Tile> castleTiles;
-  HiveCastle hiveCastle;
+  late GridList<Tile> castleTiles;
+  HiveCastle? hiveCastle;
   String title='Castle';
 
   Map<TileId,int> tileScores = {};
-  ScoreCard castleScoreCard;
+  ScoreCard? castleScoreCard;
   bool castleTotaled = false;
 
   //OrnamentCount
@@ -56,9 +54,10 @@ class Castle {
 
   Castle.fromHiveCastle(HiveCastle hiveCastle) {
     this.hiveCastle = hiveCastle;
+    this.title = hiveCastle.title ?? 'Castle';
     _initFromGridList(new GridList<Tile>(
-      hiveCastle.tileWidth,
-      TileHelper().getListOfTilesFromIds(hiveCastle.tiles),
+      hiveCastle.tileWidth!,
+      TileHelper().getListOfTilesFromIds(hiveCastle.tiles!),
     ));
   }
 
@@ -104,7 +103,7 @@ class Castle {
       scoreCastle([]);
       castleScoreCard = new ScoreCard(tileScores);
     }
-    return castleScoreCard.total;
+    return castleScoreCard!.total;
   }
 
   String printScore(){
@@ -185,10 +184,6 @@ class Castle {
 
     for(int i = 0; i<tiles.length; i++) {
       currentTile = tiles[i];
-
-      if (currentTile == null) {
-        throw new Exception('There should be no null tiles but found one at index $i');
-      }
 
       if(currentTile.isNotEmpty()) {
         _addTileToCastleTotalsByTileType(currentTile,i, false);
@@ -763,14 +758,14 @@ class Castle {
   }
 
   int _scoreTileHelper({
-    @required TileType tileType,
-    @required ScoringCondition scoringCondition,
-    @required List<ScoringPosition> scoringPositions,
-    @required int scorePer,
-    @required List<Tile> tilesInScoringPositions,
-    ScoringCondition throneRoomCondition,
-    Tile tile,
-    int index,
+    required TileType tileType,
+    required ScoringCondition scoringCondition,
+    required List<ScoringPosition> scoringPositions,
+    required int scorePer,
+    required List<Tile> tilesInScoringPositions,
+    ScoringCondition? throneRoomCondition,
+    Tile? tile,
+    int? index,
   }) {
 
     int score = 0;
@@ -830,11 +825,11 @@ class Castle {
       case ScoringCondition.None:
         break;
       default:
-        throw new Exception("Unsupported scoring condition for: ${tile.id}, $scoringCondition");
+        throw new Exception("Unsupported scoring condition for: ${tile?.id}, $scoringCondition");
         break;
     }
 
-    if (throneRoomCondition != ScoringCondition.None) {
+    if (throneRoomCondition != null && throneRoomCondition != ScoringCondition.None) {
       // throneRooms have two conditions, rerun scoring but replace the
       // condition with the throneRooms second condition and use
       // throneRoom condition of null so we dont infinitely recurse
@@ -1415,7 +1410,7 @@ class Castle {
     for (int y = 0; y < castleTiles.height; y++) {
       for (int x = 0; x < castleTiles.width; x++) {
         Tile tile = castleTiles.getAt(x, y);
-        if (tile != null && tile.isNotEmpty()
+        if (tile.isNotEmpty()
             && !tile.isBonusCard() && !tile.isRoyalAttendant()
         ) {
           height++;
@@ -1432,7 +1427,7 @@ class Castle {
     for (int x = 0; x < castleTiles.width; x++) {
       for (int y = 0; y < castleTiles.height; y++) {
         Tile tile = castleTiles.getAt(x,y);
-        if (tile != null && tile.isNotEmpty()
+        if (tile.isNotEmpty()
             && !tile.isBonusCard() && !tile.isRoyalAttendant()
         ) {
           width++;
@@ -1520,7 +1515,7 @@ class Castle {
     return results;
   }
 
-  Tile _getNonEmptyTileAt(int x) {
+  Tile? _getNonEmptyTileAt(int x) {
     if (x == -1) {
       return null;
     }

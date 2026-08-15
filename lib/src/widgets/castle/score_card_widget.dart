@@ -52,24 +52,28 @@ class ScoreCardWidget extends StatelessWidget {
 
 
   @override
-  Widget build(BuildContext context) => Column(
+  Widget build(BuildContext context) {
+    castle.getScore();
+    final scoreCard = castle.castleScoreCard!;
+    return Column(
     children: [
-      _getTileTypeScoreCardRow(TileType.Food, castle.castleScoreCard.food),
-      _getTileTypeScoreCardRow(TileType.Living, castle.castleScoreCard.living),
-      _getTileTypeScoreCardRow(TileType.Utility, castle.castleScoreCard.utility),
-      _getTileTypeScoreCardRow(TileType.Outdoor, castle.castleScoreCard.outDoor),
-      _getTileTypeScoreCardRow(TileType.Sleeping, castle.castleScoreCard.sleeping),
-      _getTileTypeScoreCardRow(TileType.Corridor, castle.castleScoreCard.corridor),
-      _getTileTypeScoreCardRow(TileType.Downstairs, castle.castleScoreCard.downstairs),
-      _getTileTypeScoreCardRow(TileType.Secret, castle.castleScoreCard.secret),
-      _getTileTypeScoreCardRow(TileType.Activity, castle.castleScoreCard.activity),
-      _getSpecialTileScoreCardRow(TileId.Tower, castle.castleScoreCard.tower),
-      _getSpecialTileScoreCardRow(TileId.Fountain, castle.castleScoreCard.fountain),
-      _getSpecialTileScoreCardRow(TileId.GrandFoyer, castle.castleScoreCard.grandFoyer),
-      _getSpecialTileScoreCardRow(TileId.BallRoomPerActivity, castle.castleScoreCard.ballroom),
-      _getSpecialTileScoreCardRow(TileId.BCPerRoomsAboveLevelThree, castle.castleScoreCard.bonus),
-      _getSpecialTileScoreCardRow(TileId.RoyalAttendantTaylor, castle.castleScoreCard.royalAttendants),
-      _getSpecialTileScoreCardRow(castle.castleScoreCard.throneRoom.entries.first.key, castle.castleScoreCard.throneRoom),
+      _getTileTypeScoreCardRow(TileType.Food, scoreCard.food),
+      _getTileTypeScoreCardRow(TileType.Living, scoreCard.living),
+      _getTileTypeScoreCardRow(TileType.Utility, scoreCard.utility),
+      _getTileTypeScoreCardRow(TileType.Outdoor, scoreCard.outDoor),
+      _getTileTypeScoreCardRow(TileType.Sleeping, scoreCard.sleeping),
+      _getTileTypeScoreCardRow(TileType.Corridor, scoreCard.corridor),
+      _getTileTypeScoreCardRow(TileType.Downstairs, scoreCard.downstairs),
+      _getTileTypeScoreCardRow(TileType.Secret, scoreCard.secret),
+      _getTileTypeScoreCardRow(TileType.Activity, scoreCard.activity),
+      _getSpecialTileScoreCardRow(TileId.Tower, scoreCard.tower),
+      _getSpecialTileScoreCardRow(TileId.Fountain, scoreCard.fountain),
+      _getSpecialTileScoreCardRow(TileId.GrandFoyer, scoreCard.grandFoyer),
+      _getSpecialTileScoreCardRow(TileId.BallRoomPerActivity, scoreCard.ballroom),
+      _getSpecialTileScoreCardRow(TileId.BCPerRoomsAboveLevelThree, scoreCard.bonus),
+      _getSpecialTileScoreCardRow(TileId.RoyalAttendantTaylor, scoreCard.royalAttendants),
+      _getSpecialTileScoreCardRow(scoreCard.throneRoom.entries.first.key, scoreCard.throneRoom),
     ],
   );
+  }
 }

@@ -1,17 +1,16 @@
-
 import 'package:flutter/material.dart';
 
 class AsyncConfirmationDialog extends StatefulWidget {
 
   final String confirmationText;
   final Future<String> Function() onPressedYes;
-  final void Function() onPressedNo;
+  final void Function()? onPressedNo;
   final String progressText;
   final bool popOnYes;
 
   AsyncConfirmationDialog({
-    @required this.confirmationText,
-    @required this.onPressedYes,
+    required this.confirmationText,
+    required this.onPressedYes,
     this.onPressedNo,
     this.progressText='',
     this.popOnYes=false,
@@ -24,7 +23,7 @@ class AsyncConfirmationDialog extends StatefulWidget {
 class AsyncConfirmationDialogState extends State<AsyncConfirmationDialog> {
 
   bool isLoading = false;
-  String resultMessage;
+  String? resultMessage;
 
   @override
   void initState() {
@@ -58,22 +57,12 @@ class AsyncConfirmationDialogState extends State<AsyncConfirmationDialog> {
     if (isLoading || resultMessage != null) {
       return [];
     }
-    else if (resultMessage != null) {
-      return [
-        ElevatedButton(
-          child: Text('Ok'),
-          onPressed: () {
-            Navigator.pop(context, false);
-          }
-        )
-      ];
-    }
     else return <Widget>[
         ElevatedButton(
           child: Text('No'),
           onPressed: (){
             if (widget.onPressedNo != null) {
-              widget.onPressedNo();
+              widget.onPressedNo!();
             }
 
             Navigator.pop(context, false);
@@ -98,7 +87,7 @@ class AsyncConfirmationDialogState extends State<AsyncConfirmationDialog> {
       );
     }
     else if (resultMessage != null) {
-      return Text(resultMessage);
+      return Text(resultMessage!);
     }
     else {
       return Text(widget.confirmationText);

@@ -6,6 +6,7 @@ import 'package:btcc/src/utils/log.dart';
 import 'package:btcc/src/utils/navigation_helper.dart';
 import 'package:btcc/src/widgets/background_container.dart';
 import 'package:btcc/src/widgets/button_padding.dart';
+import 'package:btcc/src/widgets/edit_text_dialog.dart';
 import 'package:btcc/src/widgets/game/game_list.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -32,8 +33,8 @@ class MainScreen extends StatelessWidget {
     }
 
     Email email = Email(
-      subject: 'Feedback',
-      recipients: ['castleappraiser@gmail.com'],
+      subject: 'Castle Appraiser 2.0 Feedback',
+      recipients: ['castleappraiser2@cydvicious.com'],
       attachmentPaths: hasLogsFile ? [filePath] : []
     );
 
@@ -44,22 +45,39 @@ class MainScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (BuildContext ctx) => AlertDialog(
-        title: Text('Castle Appraiser'),
-        content: Text('Not an official Stonemaier Games product.\n\nFor bug reports, feature requests, or general feedback please contact us via the "Send Feedback" button below.'),
+        title: Text('Castle Appraiser 2.0'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Not an official Stonemaier Games product.\n\nFor bug reports, feature requests, or general feedback please contact us via the "Send Feedback" button below.'),
+            SizedBox(height: 16),
+            Text('Huge thanks and kudos to Mitch Hymel for the original Castle Appraiser.'),
+            TextButton(
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text('github.com/mitchhymel/CastleAppraiser'),
+              onPressed: () => launch('https://github.com/mitchhymel/CastleAppraiser'),
+            ),
+          ],
+        ),
         actions: [
           TextButton(
             child: Text('Open Source Licenses'),
             onPressed: () => showLicensePage(context: ctx,
-              applicationName: 'Castle Appraiser',
+              applicationName: 'Castle Appraiser 2.0',
             ),
           ),
           TextButton(
             child: Text('Privacy Policy'),
-            onPressed: () => launch('https://castleappraiser.com/privacypolicy.html'),
+            onPressed: () => launch('https://cydvicious.com/castle-app-2/privacypolicy.html'),
           ),
           TextButton(
             child: Text('Terms of Use'),
-            onPressed: () => launch('https://castleappraiser.com/termsofuse.html'),
+            onPressed: () => launch('https://cydvicious.com/castle-app-2/termsofuse.html'),
           ),
           TextButton(
             child: Text('View logs'),
@@ -109,7 +127,19 @@ class MainScreen extends StatelessWidget {
                   heroTag: 'newgame',
                   icon: Icon(Icons.add),
                   label: Text('Add new game'),
-                  onPressed: () => NavigationHelper.goToGameEditScreen(context)
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (_) => EditTextDialog(
+                        confirmationText: 'Name this game',
+                        onPressedYes: (name) async {
+                          var store = Provider.of<DataStore>(context, listen: false);
+                          var game = await store.createAndPersistGame(title: name);
+                          NavigationHelper.goToGameEditScreen(context, game: game);
+                        },
+                      ),
+                    );
+                  },
                 ),
                 Flexible(child: Container()),
                 // Add an extra opacity here so that the add game button is centered

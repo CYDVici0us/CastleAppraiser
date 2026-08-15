@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 
 import 'expandable_drag_and_drop_grid.dart';
 
-class ExpandableGridMapView<T> extends StatefulWidget {
+class ExpandableGridMapView<T extends Object> extends StatefulWidget {
 
   final GridList<T> gridList;
   final CreateItemCallback<T> getEmpty;
@@ -20,20 +20,20 @@ class ExpandableGridMapView<T> extends StatefulWidget {
   final IndexItemCallback<T> onDropOnItem;
   final DragItemCallback onDragItem;
   final IndexItemCallback<T> onDragCancelled;
-  final ExpandCollapseCallback onExpandCollapse;
+  final ExpandCollapseCallback<T> onExpandCollapse;
 
   ExpandableGridMapView({
-    @required this.gridList,
-    @required this.getEmpty,
-    @required this.builder,
-    @required this.feedback,
-    @required this.wrapperOnDropHover,
-    @required this.canDragItem,
-    @required this.canDropOnItem,
-    @required this.onDropOnItem,
-    @required this.onDragItem,
-    @required this.onDragCancelled,
-    @required this.onExpandCollapse,
+    required this.gridList,
+    required this.getEmpty,
+    required this.builder,
+    required this.feedback,
+    required this.wrapperOnDropHover,
+    required this.canDragItem,
+    required this.canDropOnItem,
+    required this.onDropOnItem,
+    required this.onDragItem,
+    required this.onDragCancelled,
+    required this.onExpandCollapse,
     this.replaceWithEmptyOnDragStart=true,
   });
 
@@ -41,7 +41,7 @@ class ExpandableGridMapView<T> extends StatefulWidget {
   createState() => _ExpandableGridMapViewState<T>();
 }
 
-class _ExpandableGridMapViewState<T> extends State<ExpandableGridMapView<T>> {
+class _ExpandableGridMapViewState<T extends Object> extends State<ExpandableGridMapView<T>> {
 
 
   @override

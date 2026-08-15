@@ -2,7 +2,6 @@
 import 'package:btcc/src/utils/tile_helper.dart';
 import 'package:btcc/src/utils/log.dart';
 
-import 'enums/tile_id.dart';
 import 'package:btcc/src/models/exports.dart';
 
 

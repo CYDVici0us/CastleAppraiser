@@ -23,7 +23,7 @@ class ImageHelper {
     File image = new File(imagePath);
     var bytes = await image.readAsBytes();
     var data = await readExifFromBytes(bytes);
-    int val = data['Image Orientation'].values.firstAsInt();
+    int val = data['Image Orientation']!.values.firstAsInt();
     switch (val) {
       case 1:
         return ImageRotation.Normal;
@@ -35,7 +35,6 @@ class ImageHelper {
         return ImageRotation.NinetyCounterClockwise;
       default:
         throw new Exception("Unsupported image rotation type");
-        break;
     }
   }
 }

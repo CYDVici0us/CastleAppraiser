@@ -1,6 +1,5 @@
 
 
-import 'package:flutter/material.dart';
 
 class TfliteModel {
   final String file;
@@ -12,8 +11,8 @@ class TfliteModel {
     scoring,
   ];
 
-  const TfliteModel({@required this.file, @required this.labels, @required this.inputImageSize});
-  const TfliteModel._private2({@required String name, @required this.inputImageSize}):
+  const TfliteModel({required this.file, required this.labels, required this.inputImageSize});
+  const TfliteModel._private2({required String name, required this.inputImageSize}):
     this.file ='assets/OPTIMIZE-$name.tflite',
     this.labels = 'assets/labels_$name.txt';
 

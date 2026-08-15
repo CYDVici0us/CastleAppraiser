@@ -2,7 +2,6 @@
 
 import 'package:btcc/src/tflite/tflite_objects.dart';
 import 'package:btcc/src/utils/asset_helper.dart';
-import 'package:btcc/src/utils/log.dart';
 import 'package:flutter/material.dart';
 
 
@@ -15,12 +14,12 @@ class GuessCanvas extends StatelessWidget {
   final bool hasBorder;
   final Map<String, Color> colorMap;
   GuessCanvas({
-    @required this.canvasSize,
-    @required this.imageHeight,
-    @required this.imageWidth,
-    @required this.guesses,
+    required this.canvasSize,
+    required this.imageHeight,
+    required this.imageWidth,
+    required this.guesses,
     this.hasBorder=false,
-    @required this.colorMap,
+    required this.colorMap,
   });
 
   @override
@@ -59,7 +58,7 @@ class BoxPainter extends CustomPainter {
       canvas.drawRect(Rect.fromLTRB(left, 0, left+scaledWidth, scaledHeight), paint2);
 
       for (TfliteProcessedGuess guess in guesses) {
-        Color color =  colorMap[guess.label.toString()];
+        Color color =  colorMap[guess.label.toString()] ?? Colors.red;
         var paint1 = Paint()
           ..color = color
           ..style = PaintingStyle.stroke
@@ -90,7 +89,7 @@ class BoxPainter extends CustomPainter {
 
       //print('left == $left, scaledWidth = $scaledWidth, scaledHeight == $scaledHeight, xscalefactor = ${scaledWidth/imageWidth}, yscalefactor = ${scaledHeight/imageHeight}, imageWidth = $imageWidth, imageheight=$imageHeight');
       for (TfliteProcessedGuess guess in guesses) {
-        Color color =  AssetHelper().labelToColorMap[guess.label];
+        Color color =  AssetHelper().labelToColorMap[guess.label] ?? Colors.red;
         var paint1 = Paint()
           ..color = color
           ..style = PaintingStyle.stroke

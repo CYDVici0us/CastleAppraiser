@@ -9,7 +9,9 @@ class AppWidget extends StatelessWidget {
     home: MainScreen(),
     themeMode: ThemeMode.light,
     theme: ThemeData.dark().copyWith(
-      accentColor: Colors.blueAccent,
+      colorScheme: ThemeData.dark().colorScheme.copyWith(
+        secondary: Colors.blueAccent,
+      ),
       textTheme: TextTheme(
         
       ),

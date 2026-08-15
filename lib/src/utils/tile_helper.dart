@@ -1,17 +1,15 @@
 
 import 'package:btcc/src/models/exports.dart';
-import 'package:btcc/src/models/tileclasses/generated_tiles.dart';
-import 'package:btcc/src/models/tileclasses/other_tiles.dart';
 import 'package:flutter/foundation.dart';
 
 import 'grid_expander.dart';
 
 class TileHelper {
 
-  Map<TileId, Tile> tiles;
-  List<Tile> listOfAllTiles;
+  late Map<TileId, Tile> tiles;
+  late List<Tile> listOfAllTiles;
 
-  static TileHelper _instance;
+  static TileHelper? _instance;
   TileHelper._private() {
     tiles = createAllTiles();
   }
@@ -20,12 +18,12 @@ class TileHelper {
     if (_instance == null) {
       _instance = new TileHelper._private();
     }
-    return _instance;
+    return _instance!;
   }
 
   Tile getTileById(TileId id) {
     if (tiles.containsKey(id)) {
-      return tiles[id];
+      return tiles[id]!;
     }
 
     if (id == TileId.EMPTY) {

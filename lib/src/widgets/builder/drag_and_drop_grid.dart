@@ -4,7 +4,7 @@ import 'package:btcc/src/utils/grid_expander.dart';
 import 'package:btcc/src/utils/typedefs.dart';
 import 'package:flutter/material.dart';
 
-class DragAndDropGrid<T> extends StatefulWidget {
+class DragAndDropGrid<T extends Object> extends StatefulWidget {
 
   final GridList<T> gridList;
   final CreateItemCallback<T> getEmpty;
@@ -19,24 +19,24 @@ class DragAndDropGrid<T> extends StatefulWidget {
   final IndexItemCallback<T> onDragCancelled;
 
   DragAndDropGrid({
-    @required this.gridList,
-    @required this.getEmpty,
-    @required this.builder,
-    @required this.feedback,
-    @required this.wrapperOnDropHover,
-    @required this.canDragItem,
-    @required this.canDropOnItem,
+    required this.gridList,
+    required this.getEmpty,
+    required this.builder,
+    required this.feedback,
+    required this.wrapperOnDropHover,
+    required this.canDragItem,
+    required this.canDropOnItem,
     this.replaceWithEmptyOnDragStart=true,
-    @required this.onDropOnItem,
-    @required this.onDragItem,
-    @required this.onDragCancelled,
+    required this.onDropOnItem,
+    required this.onDragItem,
+    required this.onDragCancelled,
   });
 
   @override
   _DragAndDropGridState<T> createState() => new _DragAndDropGridState<T>();
 }
 
-class _DragAndDropGridState<T> extends State<DragAndDropGrid<T>> {
+class _DragAndDropGridState<T extends Object> extends State<DragAndDropGrid<T>> {
 
 
 
@@ -51,9 +51,9 @@ class _DragAndDropGridState<T> extends State<DragAndDropGrid<T>> {
       return built;
     }
 
-    return DragTarget(
-      onAccept: (T data) {
-        widget.onDropOnItem(index, data);
+    return DragTarget<T>(
+      onAcceptWithDetails: (DragTargetDetails<T> details) {
+        widget.onDropOnItem(index, details.data);
       },
       builder: (_, candidateData, rejectedData) => candidateData.length > 0 ?
         widget.wrapperOnDropHover(item, built) :
@@ -67,7 +67,7 @@ class _DragAndDropGridState<T> extends State<DragAndDropGrid<T>> {
       return built;
     }
 
-    return LongPressDraggable(
+    return LongPressDraggable<T>(
       childWhenDragging: widget.builder(context, widget.getEmpty()),
       child: built,
       feedback: widget.feedback(context, item),

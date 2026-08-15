@@ -7,7 +7,6 @@ import 'package:btcc/src/tflite/tflite_objects.dart';
 import 'package:btcc/src/utils/grid_expander.dart';
 import 'package:btcc/src/utils/statistics_helper.dart';
 import 'package:btcc/src/utils/tile_helper.dart';
-import 'package:flutter/material.dart' hide Placeholder;
 
 class TfliteHelper {
 
@@ -24,7 +23,7 @@ class TfliteHelper {
 
   static GridList<Tile> convertGuessesToCastle(List<TfliteProcessedGuess> pGuesses){
     GridList<Tile> castleTiles;
-    if (pGuesses == null || pGuesses.length == 0) {
+    if (pGuesses.length == 0) {
       log('No guesses');
       return new GridList<Tile>(3, createEmptyTileList(3,3));
     }
@@ -41,13 +40,13 @@ class TfliteHelper {
     int castleWidth = ((stats.maxX-stats.minX)/stats.averageX).round()+2;
     castleTiles = new GridList<Tile>(castleWidth,createEmptyTileList(castleWidth,castleHeight));
 
-    TfliteProcessedGuess throneRoomGuess;
-    int throneRoomBestX;
-    int throneRoomBestY;
-    Tile bonusCard1;
-    Tile bonusCard2;
-    Tile royalAttendant1;
-    Tile royalAttendant2;
+    TfliteProcessedGuess? throneRoomGuess;
+    int? throneRoomBestX;
+    int? throneRoomBestY;
+    Tile? bonusCard1;
+    Tile? bonusCard2;
+    Tile? royalAttendant1;
+    Tile? royalAttendant2;
 
     for(int i = 0; i<pGuesses.length;i++){
       if(isNonTile(pGuesses[i])){
@@ -94,11 +93,11 @@ class TfliteHelper {
     }
     else {
       if(castleTiles.items[getTileIndexInList(castleTiles,throneRoomBestX,throneRoomBestY)].isEmpty() && castleTiles.items[getTileIndexInList(castleTiles,throneRoomBestX,throneRoomBestY)+1].isEmpty()){
-        castleTiles.items[getTileIndexInList(castleTiles, throneRoomBestX, throneRoomBestY)]= getCorrectTile(throneRoomGuess, castleTiles.items);
+        castleTiles.items[getTileIndexInList(castleTiles, throneRoomBestX, throneRoomBestY)]= getCorrectTile(throneRoomGuess!, castleTiles.items);
         castleTiles.items[getTileIndexInList(castleTiles,throneRoomBestX,throneRoomBestY)+1] = Placeholder();
       }
       else{
-        castleTiles.items[getTileIndexInList(castleTiles, throneRoomBestX, throneRoomBestY)+1]= getCorrectTile(throneRoomGuess, castleTiles.items);
+        castleTiles.items[getTileIndexInList(castleTiles, throneRoomBestX, throneRoomBestY)+1]= getCorrectTile(throneRoomGuess!, castleTiles.items);
         castleTiles.items[getTileIndexInList(castleTiles,throneRoomBestX,throneRoomBestY)+2] = Placeholder();
       }
 
@@ -331,14 +330,14 @@ class GuessStats{
   double stdY;
 
   GuessStats({
-    @required this.minX,
-    @required this.maxX,
-    @required this.minY,
-    @required this.maxY,
-    @required this.averageX,
-    @required this.averageY,
-    @required this.stdX,
-    @required this.stdY,
+    required this.minX,
+    required this.maxX,
+    required this.minY,
+    required this.maxY,
+    required this.averageX,
+    required this.averageY,
+    required this.stdX,
+    required this.stdY,
   });
 
   static GuessStats getGuessStats(List<TfliteProcessedGuess> pg){

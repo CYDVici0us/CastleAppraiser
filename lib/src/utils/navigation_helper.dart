@@ -9,6 +9,7 @@ import 'package:btcc/src/screens/game_edit_screen.dart';
 import 'package:btcc/src/screens/pre_camera_screen.dart';
 import 'package:btcc/src/screens/pre_castle_screen.dart';
 import 'package:btcc/src/state/camera_store.dart';
+import 'package:btcc/src/utils/orientation_helper.dart';
 import 'package:btcc/src/utils/typedefs.dart';
 import 'package:flutter/material.dart';
 
@@ -20,15 +21,18 @@ class NavigationHelper {
   static goToCameraExperience(BuildContext context, {
     int numPicturesTaken=0,
     bool replace=false,
-    @required CameraTech cameraTech,
-    @required AddCastleToGameCallback addCastleCallback,
+    required CameraTech cameraTech,
+    required AddCastleToGameCallback addCastleCallback,
+    String? gameTitle,
   }) {
+    OrientationHelper.unlockForCamera();
     MaterialPageRoute<Null> route;
     if (cameraTech == CameraTech.NATIVE) {
       route = MaterialPageRoute<Null>(
         builder: (_) => NativeCameraWaitScreen(
           addCastleCallback: addCastleCallback,
-          numPicturesTaken: numPicturesTaken
+          numPicturesTaken: numPicturesTaken,
+          gameTitle: gameTitle,
         )
       );
     }
@@ -36,7 +40,8 @@ class NavigationHelper {
       route = MaterialPageRoute<Null>(
         builder: (_) => PreCameraScreen(
           addCastleCallback: addCastleCallback,
-          numPicturesTaken: numPicturesTaken
+          numPicturesTaken: numPicturesTaken,
+          gameTitle: gameTitle,
         )
       );
     }
@@ -45,8 +50,9 @@ class NavigationHelper {
 
   static goToGameEditScreen(BuildContext context, {
     bool replace=false,
-    Game game,
+    Game? game,
   }) {
+    OrientationHelper.lockPortrait();
     var route = MaterialPageRoute<Null>(
       builder: (_) => GameEditScreen(game: game),
     );
@@ -54,18 +60,20 @@ class NavigationHelper {
   }
 
   static goToCastleConfirmScreen(BuildContext context, {
-    @required GridList<Tile> castleTiles,
-    @required AddCastleToGameCallback addCastleCallback,
-    String imagePath, 
+    required GridList<Tile> castleTiles,
+    required AddCastleToGameCallback addCastleCallback,
+    String? imagePath, 
     bool replace=false,
     int numPicturesTaken = 0,
+    String? gameTitle,
   }) {
     var route = MaterialPageRoute<Null>(
       builder: (_) => CastleConfirmScreen(
         castleTiles: castleTiles, 
         imagePath: imagePath,
         addCastleCallback: addCastleCallback,
-        numPicturesTaken: numPicturesTaken
+        numPicturesTaken: numPicturesTaken,
+        gameTitle: gameTitle,
       )
     );
     _goTo(context, route, replace: replace);
@@ -74,13 +82,19 @@ class NavigationHelper {
   static goToCastleScreen(BuildContext context, Castle castle, {
     bool replace=false,
     bool onlyShowScoreCard=false,
-    DeleteCastleCallback deleteCastleCallback,
+    DeleteCastleCallback? deleteCastleCallback,
+    VoidCallback? editCastleCallback,
+    VoidCallback? renameCastleCallback,
+    String? gameTitle,
   }) {
     var route = MaterialPageRoute<Null>(
         builder: (_) => CastleScreen(
           castle: castle,
           onlyShowScoreCard: onlyShowScoreCard,
           deleteCastleCallback: deleteCastleCallback,
+          editCastleCallback: editCastleCallback,
+          renameCastleCallback: renameCastleCallback,
+          gameTitle: gameTitle,
         )
     );
     _goTo(context, route, replace: replace);
@@ -90,7 +104,8 @@ class NavigationHelper {
     ImageRotation rotation=ImageRotation.Normal,
     bool replace=false,
     int numPicturesTaken = 0,
-    @required AddCastleToGameCallback addCastleCallback,
+    required AddCastleToGameCallback addCastleCallback,
+    String? gameTitle,
   }) {
     var route = MaterialPageRoute<Null>(
         builder: (_) => PreCastleScreen(
@@ -98,30 +113,38 @@ class NavigationHelper {
           rotation: rotation,
           addCastleCallback: addCastleCallback,
           numPicturesTaken: numPicturesTaken,
+          gameTitle: gameTitle,
         )
     );
     _goTo(context, route, replace: replace);
   }
 
   static goToCastleBuilderScreen(BuildContext context, {
-    @required GridList<Tile> castleTiles,
-    String imagePath,
+    required GridList<Tile> castleTiles,
+    String? imagePath,
     bool replace=false,
     int numPicturesTaken=0,
-    @required AddCastleToGameCallback addCastleCallback,
+    AddCastleToGameCallback? addCastleCallback,
+    UpdateCastleCallback? updateCastleCallback,
+    Castle? existingCastle,
+    String? gameTitle,
   }) {
+    assert(addCastleCallback != null || updateCastleCallback != null);
     var route = MaterialPageRoute<Null>(
         builder: (_) => CastleBuilderScreen(
           castleTiles: castleTiles,
           imagePath: imagePath,
           addCastleCallback: addCastleCallback,
+          updateCastleCallback: updateCastleCallback,
+          existingCastle: existingCastle,
           numPicturesTaken: numPicturesTaken,
+          gameTitle: gameTitle,
         )
     );
     _goTo(context, route, replace: replace);
   }
 
-  static goToDebugMlScreen(BuildContext context, {String imagePath, bool replace=false}) {
+  static goToDebugMlScreen(BuildContext context, {String? imagePath, bool replace=false}) {
     var route = MaterialPageRoute<Null>(
         builder: (_) => DebugMLScreen(imagePath)
     );

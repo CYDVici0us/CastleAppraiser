@@ -1,7 +1,7 @@
 import 'package:btcc/src/utils/typedefs.dart';
 import 'package:flutter/material.dart';
 
-class FilteredDragAndDropListView<T> extends StatefulWidget {
+class FilteredDragAndDropListView<T extends Object> extends StatefulWidget {
 
   final String hintText;
   final ValueChanged<String> onTextChanged;
@@ -15,11 +15,11 @@ class FilteredDragAndDropListView<T> extends StatefulWidget {
   final Color textBackgroundColor;
 
   FilteredDragAndDropListView({
-    @required this.hintText,
-    @required this.onTextChanged,
-    @required this.onClearPressed,
-    @required this.onAcceptWithDetails,
-    @required this.children,
+    required this.hintText,
+    required this.onTextChanged,
+    required this.onClearPressed,
+    required this.onAcceptWithDetails,
+    required this.children,
     this.scrollDirection=Axis.horizontal,
     this.listItemPadding=const EdgeInsets.all(0.0),
     this.height = 150,
@@ -31,10 +31,10 @@ class FilteredDragAndDropListView<T> extends StatefulWidget {
   createState() => _FilteredDragAndDropListViewState<T>();
 }
 
-class _FilteredDragAndDropListViewState<T> extends State<FilteredDragAndDropListView<T>> {
+class _FilteredDragAndDropListViewState<T extends Object> extends State<FilteredDragAndDropListView<T>> {
 
-  TextEditingController _textEditingController;
-  ScrollController _controller;
+  late TextEditingController _textEditingController;
+  late ScrollController _controller;
 
   @override
   void initState() {

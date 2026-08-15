@@ -9,8 +9,8 @@ class TileScoreGridItem extends StatelessWidget {
   final int score;
   final Tile tile;
   TileScoreGridItem({
-    @required this.score,
-    @required this.tile,
+    required this.score,
+    required this.tile,
   });
 
   @override
@@ -50,7 +50,7 @@ class TileScoreGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     List<Widget> rows = [];
     List<Widget> itemsInRow = [];
-    Widget throneRoomWidget;
+    Widget? throneRoomWidget;
     for (int i = 0; i < castle.tileScores.keys.length; i++) {
 
       TileId tileId = castle.tileScores.keys.elementAt(i);
@@ -59,7 +59,7 @@ class TileScoreGrid extends StatelessWidget {
       if (tile.tileType == TileType.ThroneRoom) {
         throneRoomWidget = TileScoreGridItem(
           tile: tile,
-          score: castle.tileScores[tileId],
+          score: castle.tileScores[tileId]!,
         );
 
         continue;
@@ -77,7 +77,7 @@ class TileScoreGrid extends StatelessWidget {
       
       itemsInRow.add(TileScoreGridItem(
         tile: tile,
-        score: castle.tileScores[tileId],
+        score: castle.tileScores[tileId]!,
       ));
 
       if (itemsInRow.length == 1) {
@@ -89,7 +89,7 @@ class TileScoreGrid extends StatelessWidget {
 
     return Column(
       children: [
-        throneRoomWidget,
+        if (throneRoomWidget != null) throneRoomWidget,
         Container(height: 8),
       ]..addAll(rows),
     );

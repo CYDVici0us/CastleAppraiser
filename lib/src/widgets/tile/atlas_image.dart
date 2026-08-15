@@ -10,10 +10,10 @@ class AtlasImage extends StatelessWidget {
   final Rect rect;
   final double scaleFactor;
   AtlasImage({
-    @required this.height,
-    @required this.width,
-    @required this.imagePath,
-    @required this.rect,
+    required this.height,
+    required this.width,
+    required this.imagePath,
+    required this.rect,
     this.scaleFactor=1
   });
 
@@ -23,7 +23,7 @@ class AtlasImage extends StatelessWidget {
     painter: _AtlasImagePainter(
       width: width,
       height: height,
-      image: AssetHelper().imageMap[imagePath],
+      image: AssetHelper().imageMap[imagePath]!,
       rect: rect,
       scaleFactor: scaleFactor,
     ),
@@ -37,11 +37,11 @@ class _AtlasImagePainter extends CustomPainter {
   final Rect rect;
   final double scaleFactor;
   _AtlasImagePainter({
-    @required this.height,
-    @required this.width,
-    @required this.image,
-    @required this.rect,
-    @required this.scaleFactor,
+    required this.height,
+    required this.width,
+    required this.image,
+    required this.rect,
+    required this.scaleFactor,
   });
 
   @override

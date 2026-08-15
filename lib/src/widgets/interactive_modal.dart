@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:screenshot/screenshot.dart';
 
 typedef ScreenshotWidgetBuilder = Widget Function(ScreenshotController);
@@ -7,8 +6,8 @@ typedef ScreenshotWidgetBuilder = Widget Function(ScreenshotController);
 class InteractiveModalWidget extends StatefulWidget {
 
   final Widget child;
-  final ScreenshotWidgetBuilder builder;
-  InteractiveModalWidget({@required this.child, this.builder});
+  final ScreenshotWidgetBuilder? builder;
+  InteractiveModalWidget({required this.child, this.builder});
 
   @override
   State createState() => _InteractiveModalWidgetState();
@@ -39,17 +38,17 @@ class InteractiveModal extends ModalRoute<void> {
   bool get barrierDismissible => false;
 
   @override
-  Color get barrierColor => Colors.black.withOpacity(0.5);
+  Color get barrierColor => Colors.black.withValues(alpha: 0.5);
 
   @override
-  String get barrierLabel => null;
+  String? get barrierLabel => null;
 
   @override
   bool get maintainState => true;
 
   final Widget content;
   final ScreenshotController screenshotController;
-  final ScreenshotWidgetBuilder screenshotBuilder;
+  final ScreenshotWidgetBuilder? screenshotBuilder;
   InteractiveModal(this.content, this.screenshotController, this.screenshotBuilder);
 
   @override
@@ -63,9 +62,9 @@ class InteractiveModal extends ModalRoute<void> {
     }
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.black.withOpacity(0.5),
+        backgroundColor: Colors.black.withValues(alpha: 0.5),
       ),
-      backgroundColor: Colors.black.withOpacity(0.5),
+      backgroundColor: Colors.black.withValues(alpha: 0.5),
       body: InteractiveViewer(
         maxScale: 5.0,
         minScale: .2,
@@ -80,7 +79,7 @@ class InteractiveModal extends ModalRoute<void> {
           ],
         ),
       ),
-      floatingActionButton: screenshotBuilder == null ? null : screenshotBuilder(screenshotController),
+      floatingActionButton: screenshotBuilder == null ? null : screenshotBuilder!(screenshotController),
     );
   }
 

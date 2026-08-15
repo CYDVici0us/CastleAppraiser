@@ -86,7 +86,7 @@ class CameraStore extends ChangeNotifier {
     return result;
   }
 
-  static Future<String> takePictureNative() async {
+  static Future<String?> takePictureNative() async {
     try {
       PermissionStatus status = await Permission.camera.request();
       if (!status.isGranted) {
@@ -95,7 +95,7 @@ class CameraStore extends ChangeNotifier {
 
       const MethodChannel _channel = const MethodChannel('com.btcc.app/camera');
       var value = await _channel.invokeMethod('getPicture');
-      return value;
+      return value as String?;
     } catch (e) {
       log('TakePicture: $e');
       return null;

@@ -20,7 +20,7 @@ class App extends StatelessWidget {
       }
       else {
         var dir = await getExternalStorageDirectory();
-        return ImageHelper.getFullImagePath(dir.path);
+        return ImageHelper.getFullImagePath(dir!.path);
       }
     };
 

@@ -2,31 +2,46 @@ import 'dart:io';
 
 import 'package:btcc/src/analytics/analytics.dart';
 import 'package:btcc/src/models/exports.dart';
+import 'package:btcc/src/state/camera_store.dart';
 import 'package:btcc/src/utils/grid_expander.dart';
 import 'package:btcc/src/utils/navigation_helper.dart';
+import 'package:btcc/src/utils/orientation_helper.dart';
 import 'package:btcc/src/utils/typedefs.dart';
 import 'package:btcc/src/widgets/background_container.dart';
 import 'package:btcc/src/widgets/button_padding.dart';
 import 'package:btcc/src/widgets/castle/castle_tiles_grid.dart';
-import 'package:btcc/src/widgets/edit_text_dialog.dart';
+import 'package:btcc/src/widgets/flow_breadcrumb.dart';
 import 'package:btcc/src/widgets/interactive_modal.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 class CastleConfirmScreen extends StatelessWidget {
 
   final int numPicturesTaken;
   final GridList<Tile> castleTiles;
-  final String imagePath;
+  final String? imagePath;
   final AddCastleToGameCallback addCastleCallback;
+  final String? gameTitle;
+
   CastleConfirmScreen({
-    @required this.castleTiles,
-    @required this.imagePath,
-    @required this.addCastleCallback,
+    required this.castleTiles,
+    this.imagePath,
+    required this.addCastleCallback,
     this.numPicturesTaken=0,
+    this.gameTitle,
   });
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: FlowBreadcrumb(
+        segments: [gameTitle ?? 'Game', 'Confirm'],
+        onFirstSegmentTap: () {
+          OrientationHelper.lockPortrait();
+          Navigator.of(context).pop();
+        },
+      ),
+    ),
     body: BackgroundContainer(
       child: Column(
         children: [
@@ -42,8 +57,10 @@ class CastleConfirmScreen extends StatelessWidget {
                           maxHeight: MediaQuery.of(context).size.height/4.5,
                           maxWidth: MediaQuery.of(context).size.width,
                         ),
-                        child: Center(child: Image.file(File(imagePath),
-                          fit: BoxFit.fill,
+                        child: Center(child: imagePath == null
+                          ? SizedBox.shrink()
+                          : Image.file(File(imagePath!),
+                          fit: BoxFit.contain,
                         ))
                       )
                     ],
@@ -64,12 +81,10 @@ class CastleConfirmScreen extends StatelessWidget {
             ),
           ),
           ButtonPadding(),
-          // RaisedButton(
-          //   onPressed: () => BetterFeedback.of(context).show()
-          // ),
           Row(
             children: [
-              FloatingActionButton.extended(
+              Consumer<CameraStore>(
+                builder: (_, cameraStore, __) => FloatingActionButton.extended(
                 heroTag: 'picture',
                 backgroundColor: Colors.redAccent,
                 icon: Icon(Icons.camera_alt),
@@ -78,9 +93,11 @@ class CastleConfirmScreen extends StatelessWidget {
                   context,
                   addCastleCallback: addCastleCallback,
                   numPicturesTaken: numPicturesTaken,
-                  replace: true
+                  replace: true,
+                  cameraTech: cameraStore.cameraTech,
+                  gameTitle: gameTitle,
                 )
-              ),
+              )),
               Flexible(child: Container()),
               FloatingActionButton.extended(
                 heroTag: 'edit',
@@ -94,6 +111,7 @@ class CastleConfirmScreen extends StatelessWidget {
                     replace: true,
                     addCastleCallback: addCastleCallback,
                     numPicturesTaken: numPicturesTaken,
+                    gameTitle: gameTitle,
                   );
                 }
               ),
@@ -103,22 +121,12 @@ class CastleConfirmScreen extends StatelessWidget {
                 backgroundColor: Colors.green,
                 icon: Icon(Icons.check),
                 label: Text('Yes'),
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (_) => EditTextDialog(
-                      confirmationText: 'Give the castle a name',
-                      onPressedYes: (str) async {
-                        var castle = new Castle(castleTiles);
-                        castle.title = str;
-                        await addCastleCallback(castle, imagePath, numPicturesTaken);
-
-                        Analytics.logCastleSavedFromPicture(numPicturesTaken);
-
-                        Navigator.pop(context);
-                      }
-                    )
-                  );
+                onPressed: () async {
+                  var castle = Castle(castleTiles);
+                  await addCastleCallback(castle, imagePath ?? '', numPicturesTaken);
+                  Analytics.logCastleSavedFromPicture(numPicturesTaken);
+                  OrientationHelper.lockPortrait();
+                  Navigator.pop(context);
                 }
               ),
             ]
