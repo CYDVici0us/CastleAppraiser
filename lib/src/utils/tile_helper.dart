@@ -1,5 +1,6 @@
 
 import 'package:btcc/src/models/exports.dart';
+import 'package:btcc/src/utils/random_debug_castle.dart';
 import 'package:flutter/foundation.dart';
 
 import 'grid_expander.dart';
@@ -357,7 +358,7 @@ class TileHelper {
 
   GridList<Tile> getStartingGridList(TileId startingThroneRoomId) {
     if (kDebugMode) {
-      return getTestGridList();
+      return RandomDebugCastle.generate();
     }
 
     return new GridList<Tile>(4, [

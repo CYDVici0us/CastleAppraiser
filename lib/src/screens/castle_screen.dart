@@ -173,9 +173,10 @@ class CastleScreen extends StatelessWidget {
                       Text(
                         title,
                         textAlign: TextAlign.center,
-                        style: theme.textTheme.headlineMedium?.copyWith(
+                        style: theme.textTheme.displaySmall?.copyWith(
                           fontWeight: FontWeight.w700,
                           color: Colors.white,
+                          height: 1.0,
                         ),
                       ),
                       const SizedBox(height: 8),

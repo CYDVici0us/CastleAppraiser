@@ -1,4 +1,5 @@
 import 'package:auto_size_text/auto_size_text.dart';
+import 'package:btcc/src/app/app_widget.dart';
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/utils/tile_helper.dart';
 import 'package:btcc/src/utils/token_tile_grid.dart';
@@ -60,7 +61,7 @@ class TileScoreGridItem extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(8),
-      color: Colors.blueGrey,
+      color: AppColors.card,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [

@@ -1,3 +1,4 @@
+import 'package:btcc/src/app/app_widget.dart';
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/utils/navigation_helper.dart';
 import 'package:btcc/src/utils/string_helper.dart';
@@ -117,7 +118,7 @@ class GameListItem extends StatelessWidget {
     return Material(
       elevation: 8.0,
       borderRadius: BorderRadius.circular(20.0),
-      color: Colors.blueGrey,
+      color: AppColors.card,
       child: InkWell(
         onTap: () => NavigationHelper.goToGameEditScreen(context,
           game: game,

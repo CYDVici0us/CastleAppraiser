@@ -1,3 +1,4 @@
+import 'package:btcc/src/app/app_widget.dart';
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/state/camera_store.dart';
 import 'package:btcc/src/state/data_store.dart';
@@ -217,8 +218,8 @@ class _GameEditScreenState extends State<GameEditScreen> {
   }
 
   Color _getCastleItemColor(Castle castle) {
-    // Neutral charcoal so tile art stays readable (avoid blue-grey behind empties).
-    return const Color(0xFF3A3A3A);
+    // Dark blue card so empty cells read as grid gaps, not charcoal slabs.
+    return AppColors.card;
   }
 
   Widget _getCastleList() => EditableGameList(
@@ -252,7 +253,7 @@ class _GameEditScreenState extends State<GameEditScreen> {
             onPressed: () => Navigator.of(ctx).pop(),
             child: Text('OK',
               style: TextStyle(
-                color: Colors.blue,
+                color: Theme.of(ctx).colorScheme.primary,
               )
             ),
           ),

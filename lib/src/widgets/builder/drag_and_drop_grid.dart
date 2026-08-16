@@ -89,7 +89,7 @@ class _DragAndDropGridState<T extends Object> extends State<DragAndDropGrid<T>> 
         ? Container(
             foregroundDecoration: BoxDecoration(
               border: Border.all(
-                width: 4,
+                width: 2,
                 color: Colors.lightBlueAccent,
               ),
             ),

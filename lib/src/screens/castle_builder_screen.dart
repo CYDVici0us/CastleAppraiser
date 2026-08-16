@@ -1,5 +1,6 @@
 import 'package:btcc/src/utils/log.dart';
 import 'package:btcc/src/analytics/analytics.dart';
+import 'package:btcc/src/app/app_widget.dart';
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/utils/grid_expander.dart';
 import 'package:btcc/src/utils/tile_helper.dart';
@@ -512,9 +513,14 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
       } else if (positions.contains(ScoringPosition.Connected)) {
         where = ' connected';
       } else if (positions.contains(ScoringPosition.Neighbor)) {
-        where = ' adjacent';
-      } else if (positions.isNotEmpty) {
-        where = ' (${positions.map(_enumLabel).join(', ')})';
+        where = ' in neighboring castles';
+      } else if (positions.contains(ScoringPosition.Above)) {
+        where = ' above';
+      } else if (positions.contains(ScoringPosition.Below)) {
+        where = ' below';
+      } else if (positions.length >= 4) {
+        // Ordinal rings (NW/N/NE/…) — describe as surrounding, not compass labels.
+        where = ' surrounding';
       }
       if (tile.scorePer != 0) {
         parts.add('+${tile.scorePer} per $condition$where');
@@ -526,7 +532,8 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     }
 
     if (tile.throneRoomCondition != ScoringCondition.None) {
-      parts.add('+${tile.scorePer} per ${_enumLabel(tile.throneRoomCondition)}');
+      parts.add(
+          '+${tile.scorePer} per ${_enumLabel(tile.throneRoomCondition)}');
     }
 
     if (tile.decorationType != DecorationType.None) {
@@ -657,47 +664,53 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
         children: [
           _getSelectedTileDetails(index, tile),
           const SizedBox(height: 14),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            crossAxisAlignment: WrapCrossAlignment.center,
+          Row(
             children: [
-              if (canApplySearch)
-                FloatingActionButton.extended(
-                  heroTag: 'apply_search_tile',
-                  icon: Icon(isEmpty ? Icons.add : Icons.edit),
-                  label: Text(
-                      isEmpty ? 'Add selected tile' : 'Update selected tile'),
-                  onPressed: _applySelectedSearchTile,
+              Expanded(
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (canApplySearch)
+                      FloatingActionButton.extended(
+                        heroTag: 'apply_search_tile',
+                        icon: Icon(isEmpty ? Icons.add : Icons.edit),
+                        label: Text(isEmpty
+                            ? 'Add selected tile'
+                            : 'Update selected tile'),
+                        onPressed: _applySelectedSearchTile,
+                      ),
+                    if (canAdd && !_hasSearchTerm)
+                      FloatingActionButton.extended(
+                        heroTag: 'add_tile',
+                        icon: const Icon(Icons.add),
+                        label: const Text('New Tile'),
+                        onPressed: _openTilePickerForSelected,
+                      ),
+                    if (isMovable && !_hasSearchTerm)
+                      FloatingActionButton.extended(
+                        heroTag: 'update_tile',
+                        icon: const Icon(Icons.edit),
+                        label: const Text('Update'),
+                        onPressed: _openTilePickerForSelected,
+                      ),
+                    if (isThrone)
+                      FloatingActionButton.extended(
+                        heroTag: 'update_tr_selected',
+                        icon: const Icon(Icons.edit),
+                        label: const Text('Update'),
+                        onPressed: _showThroneRoomPicker,
+                      ),
+                  ],
                 ),
-              if (canAdd && !_hasSearchTerm)
-                FloatingActionButton.extended(
-                  heroTag: 'add_tile',
-                  icon: const Icon(Icons.add),
-                  label: const Text('New Tile'),
-                  onPressed: _openTilePickerForSelected,
-                ),
-              if (isMovable) ...[
-                if (!_hasSearchTerm)
-                  FloatingActionButton.extended(
-                    heroTag: 'update_tile',
-                    icon: const Icon(Icons.edit),
-                    label: const Text('Update'),
-                    onPressed: _openTilePickerForSelected,
-                  ),
+              ),
+              if (isMovable)
                 FloatingActionButton.extended(
                   heroTag: 'remove_tile',
                   icon: const Icon(Icons.delete),
                   label: const Text('Remove'),
                   onPressed: _removeSelectedTile,
-                ),
-              ],
-              if (isThrone)
-                FloatingActionButton.extended(
-                  heroTag: 'update_tr_selected',
-                  icon: const Icon(Icons.edit),
-                  label: const Text('Update'),
-                  onPressed: _showThroneRoomPicker,
                 ),
             ],
           ),
@@ -724,7 +737,7 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
       key: ValueKey('tile-search-$index'),
       hintText: 'Search tiles',
       containerColor: Colors.transparent,
-      textBackgroundColor: Colors.blueGrey.shade700,
+      textBackgroundColor: AppColors.cardElevated,
       onAcceptWithDetails:
           (DragTargetDetails details, ScrollController controller) {
         if (_draggingTile != null) {
@@ -1054,12 +1067,12 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
         ],
         const SizedBox(height: 4),
         Row(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             TextButton(
               onPressed: () => _openTokenPicker(replaceIndex: selected),
               child: const Text('Update'),
             ),
+            const Spacer(),
             TextButton(
               onPressed: _removeSelectedToken,
               child: const Text('Remove'),

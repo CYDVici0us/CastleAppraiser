@@ -1,3 +1,4 @@
+import 'package:btcc/src/app/app_widget.dart';
 import 'package:btcc/src/utils/typedefs.dart';
 import 'package:flutter/material.dart';
 
@@ -24,8 +25,8 @@ class FilteredDragAndDropListView<T extends Object> extends StatefulWidget {
     this.listItemPadding =
         const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
     this.listHeight = 100,
-    this.containerColor = Colors.blueGrey,
-    this.textBackgroundColor = Colors.blueGrey,
+    this.containerColor = AppColors.card,
+    this.textBackgroundColor = AppColors.cardElevated,
   });
 
   @override
