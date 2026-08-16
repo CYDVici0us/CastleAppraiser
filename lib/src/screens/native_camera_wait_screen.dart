@@ -45,10 +45,17 @@ class NativeCameraWaitScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: FlowBreadcrumb(
-          segments: [gameTitle ?? 'Game', 'Camera'],
-          onFirstSegmentTap: () {
+          showHome: true,
+          onHomeTap: () {
             OrientationHelper.lockPortrait();
-            Navigator.of(context).pop();
+            NavigationHelper.popToHome(context);
+          },
+          segments: [gameTitle ?? 'Game', 'Camera'],
+          onSegmentTap: (index) {
+            if (index == 0) {
+              OrientationHelper.lockPortrait();
+              Navigator.of(context).pop();
+            }
           },
         ),
       ),

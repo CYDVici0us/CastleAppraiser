@@ -138,8 +138,18 @@ class _PreCastleScreenState extends State<PreCastleScreen> {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: FlowBreadcrumb(
-        segments: [widget.gameTitle ?? 'Game', error != null ? 'Error' : 'Processing'],
-        onFirstSegmentTap: _cancelToGame,
+        showHome: true,
+        onHomeTap: () {
+          OrientationHelper.lockPortrait();
+          NavigationHelper.popToHome(context);
+        },
+        segments: [
+          widget.gameTitle ?? 'Game',
+          error != null ? 'Error' : 'Processing',
+        ],
+        onSegmentTap: (index) {
+          if (index == 0) _cancelToGame();
+        },
       ),
       leading: IconButton(
         icon: const Icon(Icons.close),

@@ -1,5 +1,6 @@
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/state/camera_store.dart';
+import 'package:btcc/src/utils/navigation_helper.dart';
 import 'package:btcc/src/utils/typedefs.dart';
 import 'package:btcc/src/widgets/background_container.dart';
 import 'package:btcc/src/widgets/flow_breadcrumb.dart';
@@ -52,8 +53,12 @@ class PreCameraScreen extends StatelessWidget {
     return Scaffold(
         appBar: AppBar(
           title: FlowBreadcrumb(
+            showHome: true,
+            onHomeTap: () => NavigationHelper.popToHome(context),
             segments: [gameTitle ?? 'Game', 'Camera'],
-            onFirstSegmentTap: () => Navigator.of(context).pop(),
+            onSegmentTap: (index) {
+              if (index == 0) Navigator.of(context).pop();
+            },
           ),
         ),
         body: BackgroundContainer(

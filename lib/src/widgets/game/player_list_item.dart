@@ -10,6 +10,8 @@ class PlayerListItem extends StatelessWidget {
   final int? primaryCastleDirection;
   final VoidCallback? onRename;
   final VoidCallback? onDelete;
+  /// Reorder drag affordance; omitted outside sorting mode.
+  final Widget? dragHandle;
   final Key? key;
 
   PlayerListItem({
@@ -20,6 +22,7 @@ class PlayerListItem extends StatelessWidget {
     this.primaryCastleDirection,
     this.onRename,
     this.onDelete,
+    this.dragHandle,
     this.key,
   }) : super(key: key);
 
@@ -117,8 +120,10 @@ class PlayerListItem extends StatelessWidget {
                   visualDensity: VisualDensity.compact,
                   onPressed: onDelete,
                 ),
-              const SizedBox(width: 4),
-              const Icon(Icons.drag_handle, color: Colors.white70),
+              if (dragHandle != null) ...[
+                const SizedBox(width: 4),
+                dragHandle!,
+              ],
             ],
           ),
         ),

@@ -82,8 +82,6 @@ class NavigationHelper {
   static goToCastleScreen(BuildContext context, Castle castle, {
     bool replace=false,
     bool onlyShowScoreCard=false,
-    DeleteCastleCallback? deleteCastleCallback,
-    VoidCallback? editCastleCallback,
     VoidCallback? renameCastleCallback,
     String? gameTitle,
   }) {
@@ -91,8 +89,6 @@ class NavigationHelper {
         builder: (_) => CastleScreen(
           castle: castle,
           onlyShowScoreCard: onlyShowScoreCard,
-          deleteCastleCallback: deleteCastleCallback,
-          editCastleCallback: editCastleCallback,
           renameCastleCallback: renameCastleCallback,
           gameTitle: gameTitle,
         )
@@ -128,8 +124,9 @@ class NavigationHelper {
     UpdateCastleCallback? updateCastleCallback,
     Castle? existingCastle,
     String? gameTitle,
+    bool readOnly=false,
   }) {
-    assert(addCastleCallback != null || updateCastleCallback != null);
+    assert(readOnly || addCastleCallback != null || updateCastleCallback != null);
     var route = MaterialPageRoute<Null>(
         builder: (_) => CastleBuilderScreen(
           castleTiles: castleTiles,
@@ -139,6 +136,7 @@ class NavigationHelper {
           existingCastle: existingCastle,
           numPicturesTaken: numPicturesTaken,
           gameTitle: gameTitle,
+          readOnly: readOnly,
         )
     );
     _goTo(context, route, replace: replace);
@@ -158,5 +156,10 @@ class NavigationHelper {
     else {
       Navigator.of(context).push(route);
     }
+  }
+
+  /// Pop to the root (main / Home) screen.
+  static void popToHome(BuildContext context) {
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 }

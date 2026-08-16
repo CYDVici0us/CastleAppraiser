@@ -130,6 +130,59 @@ void main() {
     test('shows ordinal neighbor sets', () {
       expect(ScoringPlacementMapping.shouldShow(Kitchen()), isTrue);
     });
+
+    test('shows Activity with dual diagrams', () {
+      expect(ScoringPlacementMapping.shouldShow(EscapeRoomActivity()), isTrue);
+      expect(
+        ScoringPlacementMapping.activityCardinalPositions,
+        [
+          ScoringPosition.N,
+          ScoringPosition.E,
+          ScoringPosition.S,
+          ScoringPosition.W,
+        ],
+      );
+      expect(
+        ScoringPlacementMapping.activitySurroundingPositions.length,
+        8,
+      );
+      final cardinal = ScoringPlacementMapping.standardCells(
+        ScoringPlacementMapping.activityCardinalPositions,
+      );
+      expect(cardinal.where((c) => c == PlacementCellKind.scoring).length, 4);
+      final surround = ScoringPlacementMapping.standardCells(
+        ScoringPlacementMapping.activitySurroundingPositions,
+      );
+      expect(surround.where((c) => c == PlacementCellKind.scoring).length, 8);
+    });
+  });
+
+  group('ScoringBlurb activity', () {
+    test('lists adjacency before specialty override', () {
+      final tile = EscapeRoomActivity();
+      expect(ScoringBlurb.hasContent(tile), isTrue);
+      final runs = ScoringBlurb.runsTextFor(tile);
+      expect(runs.first, contains('per room'));
+      expect(runs.any((r) => r.contains('+1 if ')), isTrue);
+      expect(runs.any((r) => r.contains('Utility')), isTrue);
+      expect(runs.indexWhere((r) => r.contains('per room')),
+          lessThan(runs.indexWhere((r) => r.contains('Utility'))));
+    });
+  });
+
+  group('Sleeping score details', () {
+    test('blurb describes +4 / +1 rule, not per SleepingRoom', () {
+      final tile = PuppyRoom();
+      expect(ScoringBlurb.hasContent(tile), isTrue);
+      final text = ScoringBlurb.runsTextFor(tile).join();
+      expect(text, contains('+4 if ≥6 regular room types'));
+      expect(text, contains('+1 otherwise'));
+      expect(text.toLowerCase(), isNot(contains('per sleeping')));
+    });
+
+    test('shows 2×3 regular types diagram', () {
+      expect(ScoringPlacementMapping.shouldShow(PuppyRoom()), isTrue);
+    });
   });
 }
 

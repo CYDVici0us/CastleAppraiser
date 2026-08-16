@@ -1,8 +1,8 @@
 import 'package:btcc/src/utils/log.dart';
 import 'package:btcc/src/analytics/analytics.dart';
-import 'package:btcc/src/app/app_widget.dart';
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/utils/grid_expander.dart';
+import 'package:btcc/src/utils/navigation_helper.dart';
 import 'package:btcc/src/utils/tile_helper.dart';
 import 'package:btcc/src/utils/tile_placement.dart';
 import 'package:btcc/src/utils/token_tile_grid.dart';
@@ -16,7 +16,6 @@ import 'package:btcc/src/widgets/button_padding.dart';
 import 'package:btcc/src/widgets/flow_breadcrumb.dart';
 import 'package:btcc/src/widgets/tile/scoring_blurb.dart';
 import 'package:btcc/src/widgets/tile/scoring_placement_grid.dart';
-import 'package:btcc/src/widgets/tile/tile_type_widget.dart';
 import 'package:btcc/src/widgets/tile/tile_widget.dart';
 import 'package:flutter/material.dart' hide Placeholder;
 import 'dart:math';
@@ -35,6 +34,8 @@ class CastleBuilderScreen extends StatefulWidget {
   final UpdateCastleCallback? updateCastleCallback;
   final Castle? existingCastle;
   final String? gameTitle;
+  /// View-only: zoom map + token strip, no edit controls.
+  final bool readOnly;
 
   CastleBuilderScreen({
     required this.castleTiles,
@@ -44,6 +45,7 @@ class CastleBuilderScreen extends StatefulWidget {
     this.existingCastle,
     this.numPicturesTaken = 0,
     this.gameTitle,
+    this.readOnly = false,
   });
 
   @override
@@ -109,7 +111,8 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
       getEmpty: () => Empty(),
     );
     _castleTiles = normalized.grid;
-    _tokenStripExpanded = _tokenTiles.isNotEmpty;
+    // Always start collapsed; expand only when the user taps the strip.
+    _tokenStripExpanded = false;
     _refreshAvailableTiles();
     _syncCastleFromParts();
   }
@@ -324,7 +327,7 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
   }
 
   void _applySelectedSearchTile() {
-    final index = _selectedIndex;
+    final index = _panelIndex ?? _selectedIndex;
     final tile = _selectedSearchTile;
     if (index == null || tile == null) return;
     _placeTileAt(index, tile);
@@ -507,10 +510,15 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     _updateCastle(copy);
   }
 
-  Widget _getSelectedTileDetails(int index, Tile tile) {
+  Widget _getSelectedTileDetails(
+    int index,
+    Tile tile, {
+    bool isSearchPreview = false,
+  }) {
     final theme = Theme.of(context);
     final isEmpty = tile.isEmpty();
     final isThrone = tile.isThroneRoom();
+    final isActivity = tile.tileType == TileType.Activity;
     final isSecret = tile.isSecret();
     // Secrets keep printed identity in the details panel (never scoring duplicate).
     final displayType = isSecret ? tile.trueTileType : tile.tileType;
@@ -523,15 +531,22 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     final showScoring =
         !isEmpty && ScoringBlurb.hasContent(tile, includeDecoration: false);
     final showGrid = !isEmpty && ScoringPlacementMapping.shouldShow(tile);
-    final invalids = TilePlacement.invalidReasons(_castleTiles, index);
-    final titleStyle = theme.textTheme.titleLarge?.copyWith(
-      fontWeight: FontWeight.w700,
-    );
-    final metaStyle = theme.textTheme.bodyLarge?.copyWith(
+    final showDetails = showScoring || showGrid;
+    // Previewing a search hit: don't show the grid cell's placement errors.
+    final invalids = isSearchPreview
+        ? const <PlacementInvalidReason>[]
+        : TilePlacement.invalidReasons(_castleTiles, index);
+    // Compact title for wide tiles (throne / activity) so the image can be larger.
+    final titleStyle = (isThrone || isActivity
+            ? theme.textTheme.titleMedium
+            : theme.textTheme.titleLarge)
+        ?.copyWith(fontWeight: FontWeight.w700);
+    final metaStyle = theme.textTheme.bodyMedium?.copyWith(
       color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
     );
-    final scoringStyle = theme.textTheme.bodyMedium?.copyWith(
-      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+    final scoringStyle = theme.textTheme.titleMedium?.copyWith(
+      color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+      fontWeight: FontWeight.w600,
     );
     final decorationLabel = !isEmpty &&
             !isSecret &&
@@ -540,6 +555,7 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
             tile.decorationType.toString().split('.').last,
           )
         : null;
+    const sectionGap = 6.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -548,7 +564,7 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             // Balance the close button so the title stays visually centered.
-            const SizedBox(width: 48),
+            const SizedBox(width: 40),
             Expanded(
               child: ScoringBlurb.titleWithCategories(
                 title: title,
@@ -557,18 +573,20 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
               ),
             ),
             SizedBox(
-              width: 48,
+              width: 40,
               child: IconButton(
                 tooltip: 'Clear selection',
                 icon: const Icon(Icons.close),
                 visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 40, minHeight: 36),
                 onPressed: _clearGridSelection,
               ),
             ),
           ],
         ),
         if (!isEmpty) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           if (isThrone)
             LayoutBuilder(
               builder: (context, constraints) {
@@ -582,14 +600,29 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
                       decorationLabel: decorationLabel,
                       metaStyle: metaStyle,
                       width: constraints.maxWidth,
+                      alignToEdges: true,
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     TileWidget(
                       tile,
                       scale: scale,
                       showOutline: true,
                       showInvalidBadge: invalids.isNotEmpty,
                     ),
+                    if (showDetails) ...[
+                      const SizedBox(height: sectionGap),
+                      Center(
+                        child: ScoringDetailsRow(
+                          tile: tile,
+                          style: scoringStyle,
+                          textAlign: TextAlign.start,
+                          includeDecoration: false,
+                          gridCellSize: 12,
+                          iconScale: 0.18,
+                          shrinkToFit: true,
+                        ),
+                      ),
+                    ],
                   ],
                 );
               },
@@ -597,52 +630,58 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
           else ...[
             Builder(
               builder: (context) {
-                const imageScale = 1.7;
+                final imageScale = isActivity ? 2.0 : 1.7;
                 final imageWidth =
                     TileWidget.defaultTileWidthHeight * imageScale;
-                return Center(
-                  child: SizedBox(
-                    width: imageWidth,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _selectedTileMetaRow(
-                          displayType: displayType,
-                          decorationLabel: decorationLabel,
-                          metaStyle: metaStyle,
-                          width: imageWidth,
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Center(
+                      child: SizedBox(
+                        width: imageWidth,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _selectedTileMetaRow(
+                              displayType: displayType,
+                              decorationLabel: decorationLabel,
+                              metaStyle: metaStyle,
+                              width: imageWidth,
+                              alignToEdges: false,
+                            ),
+                            const SizedBox(height: 4),
+                            TileWidget(
+                              tile,
+                              scale: imageScale,
+                              showOutline: true,
+                              showInvalidBadge: invalids.isNotEmpty,
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 8),
-                        TileWidget(
-                          tile,
-                          scale: imageScale,
-                          showOutline: true,
-                          showInvalidBadge: invalids.isNotEmpty,
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
+                    if (showDetails) ...[
+                      const SizedBox(height: sectionGap),
+                      // Larger score text; shrinks to fit instead of wrapping.
+                      Center(
+                        child: ScoringDetailsRow(
+                          tile: tile,
+                          style: scoringStyle,
+                          textAlign: TextAlign.start,
+                          includeDecoration: false,
+                          gridCellSize: isActivity ? 12 : 14,
+                          iconScale: 0.18,
+                          shrinkToFit: true,
+                        ),
+                      ),
+                    ],
+                  ],
                 );
               },
             ),
           ],
-          if (showScoring) ...[
-            const SizedBox(height: 12),
-            ScoringBlurb(
-              tile: tile,
-              style: scoringStyle,
-              textAlign: TextAlign.center,
-              includeDecoration: false,
-            ),
-          ],
-          if (showGrid) ...[
-            const SizedBox(height: 12),
-            Center(
-              child: ScoringPlacementGrid.forTile(tile, cellSize: 22),
-            ),
-          ],
         ] else ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             _canAddAt(index)
                 ? 'Search or tap + New Tile to place'
@@ -652,7 +691,7 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
           ),
         ],
         for (final reason in invalids) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Text(
             'Invalid: ${TilePlacement.describeInvalidReason(reason)}',
             textAlign: TextAlign.center,
@@ -665,30 +704,44 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     );
   }
 
+  /// Type + ornament above the tile image.
+  /// Throne: flush left / right edges. Other tiles: centered on the corners.
   Widget _selectedTileMetaRow({
     required TileType displayType,
     required String? decorationLabel,
     required TextStyle? metaStyle,
     required double width,
+    bool alignToEdges = false,
   }) {
-    final category = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _selectedTileCategoryLeading(displayType),
-        const SizedBox(width: 8),
-        Text(
-          tileTypeDisplayName(displayType),
-          style: metaStyle,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ],
+    final category = Text(
+      tileTypeDisplayName(displayType),
+      style: metaStyle,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
     );
 
     if (decorationLabel == null) {
       return SizedBox(
         width: width,
-        child: Center(child: category),
+        child: alignToEdges
+            ? Align(alignment: Alignment.centerLeft, child: category)
+            : Center(child: category),
+      );
+    }
+
+    final ornament = Text(decorationLabel, style: metaStyle);
+
+    if (alignToEdges) {
+      return SizedBox(
+        width: width,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Flexible(child: category),
+            const SizedBox(width: 8),
+            ornament,
+          ],
+        ),
       );
     }
 
@@ -712,40 +765,12 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
             right: 0,
             child: FractionalTranslation(
               translation: const Offset(0.5, 0),
-              child: Text(
-                decorationLabel,
-                style: metaStyle,
-              ),
+              child: ornament,
             ),
           ),
         ],
       ),
     );
-  }
-
-  Widget _selectedTileCategoryLeading(TileType type) {
-    switch (type) {
-      case TileType.Corridor:
-      case TileType.Downstairs:
-      case TileType.Food:
-      case TileType.Living:
-      case TileType.Outdoor:
-      case TileType.Sleeping:
-      case TileType.Utility:
-      case TileType.Secret:
-      case TileType.Activity:
-        return TileTypeWidget(type, scale: 0.32);
-      case TileType.Special:
-        return const Icon(Icons.star, size: 22);
-      case TileType.RoyalAttendant:
-        return const Icon(Icons.person, size: 22);
-      case TileType.BonusCard:
-        return const Icon(Icons.style, size: 22);
-      case TileType.ThroneRoom:
-        return const Icon(Icons.event_seat, size: 22);
-      default:
-        return const Icon(Icons.grid_view, size: 22);
-    }
   }
 
   Widget _getSelectionActionBar() {
@@ -754,12 +779,14 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
       return const SizedBox.shrink();
     }
 
-    final tile = _castleTiles.items[index];
-    final isEmpty = tile.isEmpty();
-    final isThrone = tile.tileType == TileType.ThroneRoom;
-    final isMovable = tile.isMovable();
+    final gridTile = _castleTiles.items[index];
+    final isEmpty = gridTile.isEmpty();
+    final isThrone = gridTile.tileType == TileType.ThroneRoom;
+    final isMovable = gridTile.isMovable();
     final canAdd = isEmpty && _canAddAt(index);
     final searchTile = _selectedSearchTile;
+    final showingSearchPreview = searchTile != null;
+    final detailsTile = searchTile ?? gridTile;
     final canApplySearch = searchTile != null &&
         (isEmpty
             ? canAdd && _canPlaceTileAt(index, searchTile)
@@ -770,65 +797,97 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
                   allowAboveOutdoor: true,
                   requireSupport: false,
                 ));
+    // Remove only when viewing the grid tile (search cleared / no preview).
+    final showRemove = isMovable && !_hasSearchTerm && !showingSearchPreview;
+
+    Widget compactFab({
+      required String heroTag,
+      required IconData icon,
+      required String label,
+      required VoidCallback onPressed,
+    }) {
+      return FloatingActionButton.extended(
+        heroTag: heroTag,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        extendedPadding: const EdgeInsets.symmetric(horizontal: 12),
+        extendedIconLabelSpacing: 6,
+        icon: Icon(icon, size: 18),
+        label: Text(label, style: const TextStyle(fontSize: 13)),
+        onPressed: onPressed,
+      );
+    }
+
+    final applyFab = canApplySearch
+        ? compactFab(
+            heroTag: 'apply_search_tile',
+            icon: isEmpty ? Icons.add : Icons.edit,
+            label: isEmpty ? 'Add selected tile' : 'Update selected tile',
+            onPressed: _applySelectedSearchTile,
+          )
+        : null;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 12, 10, 0),
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _getSelectedTileDetails(index, tile),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    if (canApplySearch)
-                      FloatingActionButton.extended(
-                        heroTag: 'apply_search_tile',
-                        icon: Icon(isEmpty ? Icons.add : Icons.edit),
-                        label: Text(isEmpty
-                            ? 'Add selected tile'
-                            : 'Update selected tile'),
-                        onPressed: _applySelectedSearchTile,
-                      ),
-                    if (canAdd && !_hasSearchTerm)
-                      FloatingActionButton.extended(
-                        heroTag: 'add_tile',
-                        icon: const Icon(Icons.add),
-                        label: const Text('New Tile'),
-                        onPressed: _openTilePickerForSelected,
-                      ),
-                    if (isMovable && !_hasSearchTerm)
-                      FloatingActionButton.extended(
-                        heroTag: 'update_tile',
-                        icon: const Icon(Icons.edit),
-                        label: const Text('Update'),
-                        onPressed: _openTilePickerForSelected,
-                      ),
-                    if (isThrone)
-                      FloatingActionButton.extended(
-                        heroTag: 'update_tr_selected',
-                        icon: const Icon(Icons.edit),
-                        label: const Text('Update'),
-                        onPressed: _showThroneRoomPicker,
-                      ),
-                  ],
-                ),
-              ),
-              if (isMovable)
-                FloatingActionButton.extended(
-                  heroTag: 'remove_tile',
-                  icon: const Icon(Icons.delete),
-                  label: const Text('Remove'),
-                  onPressed: _removeSelectedTile,
-                ),
-            ],
+          _getSelectedTileDetails(
+            index,
+            detailsTile,
+            isSearchPreview: showingSearchPreview,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
+          Theme(
+            data: Theme.of(context).copyWith(
+              floatingActionButtonTheme: const FloatingActionButtonThemeData(
+                extendedSizeConstraints: BoxConstraints.tightFor(height: 40),
+              ),
+            ),
+            child: applyFab != null
+                ? Center(child: applyFab)
+                : Row(
+                    children: [
+                      Expanded(
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            if (canAdd && !_hasSearchTerm)
+                              compactFab(
+                                heroTag: 'add_tile',
+                                icon: Icons.add,
+                                label: 'New Tile',
+                                onPressed: _openTilePickerForSelected,
+                              ),
+                            if (isMovable && !_hasSearchTerm)
+                              compactFab(
+                                heroTag: 'update_tile',
+                                icon: Icons.edit,
+                                label: 'Update',
+                                onPressed: _openTilePickerForSelected,
+                              ),
+                            if (isThrone && !_hasSearchTerm)
+                              compactFab(
+                                heroTag: 'update_tr_selected',
+                                icon: Icons.edit,
+                                label: 'Update',
+                                onPressed: _showThroneRoomPicker,
+                              ),
+                          ],
+                        ),
+                      ),
+                      if (showRemove)
+                        compactFab(
+                          heroTag: 'remove_tile',
+                          icon: Icons.delete,
+                          label: 'Remove',
+                          onPressed: _removeSelectedTile,
+                        ),
+                    ],
+                  ),
+          ),
+          const SizedBox(height: 8),
         ],
       ),
     );
@@ -850,8 +909,8 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     return FilteredDragAndDropListView<Tile>(
       key: ValueKey('tile-search-$index'),
       hintText: 'Search tiles',
-      containerColor: Colors.transparent,
-      textBackgroundColor: AppColors.cardElevated,
+      listHeight: 96,
+      listItemPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       onAcceptWithDetails:
           (DragTargetDetails details, ScrollController controller) {
         if (_draggingTile != null) {
@@ -926,7 +985,7 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
           borderRadius: BorderRadius.circular(10.5),
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.48,
+              maxHeight: MediaQuery.of(context).size.height * 0.55,
             ),
             child: SingleChildScrollView(
               child: Column(
@@ -973,6 +1032,11 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     final theme = Theme.of(context);
     final selected = _selectedTokenIndex;
     final count = _tokenTiles.length;
+    final readOnly = widget.readOnly;
+
+    if (readOnly && count == 0) {
+      return const SizedBox.shrink();
+    }
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
@@ -1048,7 +1112,10 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         itemCount: _tokenTiles.length +
-                            (TokenTileGrid.canAddAnyToken(_tokenTiles) ? 1 : 0),
+                            (!readOnly &&
+                                    TokenTileGrid.canAddAnyToken(_tokenTiles)
+                                ? 1
+                                : 0),
                         separatorBuilder: (_, __) => const SizedBox(width: 8),
                         itemBuilder: (context, index) {
                           if (index == _tokenTiles.length) {
@@ -1075,14 +1142,16 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
                           }
 
                           final tile = _tokenTiles[index];
-                          final isSelected = selected == index;
+                          final isSelected = !readOnly && selected == index;
                           return InkWell(
-                            onTap: () {
-                              setState(() {
-                                _selectedTokenIndex = index;
-                                _dismissGridSelectionImmediate();
-                              });
-                            },
+                            onTap: readOnly
+                                ? null
+                                : () {
+                                    setState(() {
+                                      _selectedTokenIndex = index;
+                                      _dismissGridSelectionImmediate();
+                                    });
+                                  },
                             child: Container(
                               foregroundDecoration: isSelected
                                   ? BoxDecoration(
@@ -1102,7 +1171,8 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
                         },
                       ),
                     ),
-                    if (selected != null &&
+                    if (!readOnly &&
+                        selected != null &&
                         selected >= 0 &&
                         selected < _tokenTiles.length) ...[
                       const SizedBox(height: 6),
@@ -1200,14 +1270,14 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
   Widget _getBody() => ExpandableGridMapView<Tile>(
         gridList: _castleTiles,
         getEmpty: () => Empty(),
-        canDragItem: (item) => item.isMovable(),
+        canDragItem: (item) => !widget.readOnly && item.isMovable(),
         isOccupied: _isOccupied,
         canDropOnItem: _canDropTarget,
         canAcceptDraggedItem: _canAcceptDraggedTile,
         builder: (context, index, item) => TileWidget(
           item,
           showOutline: true,
-          showInvalidBadge:
+          showInvalidBadge: !widget.readOnly &&
               TilePlacement.hasInvalidPlacement(_castleTiles, index),
         ),
         feedback: (context, index, item) => TileWidget(
@@ -1224,8 +1294,11 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
             ),
           ),
         ),
-        selectedIndex: _selectedIndex,
-        onTapItem: _onTapCell,
+        selectedIndex: widget.readOnly ? null : _selectedIndex,
+        initialCenterIndex: _castleTiles.items.indexWhere(
+          (t) => t.isThroneRoom(),
+        ),
+        onTapItem: widget.readOnly ? null : _onTapCell,
         onDropOnItem: _applyGridDrop,
         onDragItem: (int index) {
           var copy = _castleTiles;
@@ -1309,16 +1382,22 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
   List<Widget> _getFilteredListViewChildren() {
     final filtered = _getFilteredTiles();
     final selectedId = _selectedSearchTile?.id;
+    // Fit inside listHeight with vertical padding; keep every thumb square.
+    const thumbSize = 88.0;
     return filtered
         .map((tile) {
           final isSelected = selectedId == tile.id;
+          final thumb = _searchTileThumb(tile, size: thumbSize);
           return LongPressDraggable<Tile>(
             delay: DragAndDropGrid.dragDelay,
             data: tile,
-            feedback: TileWidget(tile),
+            feedback: Material(
+              color: Colors.transparent,
+              child: thumb,
+            ),
             childWhenDragging: Opacity(
               opacity: 0.35,
-              child: TileWidget(tile),
+              child: thumb,
             ),
             onDragStarted: () {
               log('alltiles length ${_allTiles.length}');
@@ -1359,12 +1438,27 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
                         ),
                       )
                     : null,
-                child: TileWidget(tile),
+                child: thumb,
               ),
             ),
           );
         })
         .toList();
+  }
+
+  /// Uniform square search thumb — clips/fits any tile aspect into [size]².
+  Widget _searchTileThumb(Tile tile, {required double size}) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: ClipRect(
+        child: FittedBox(
+          fit: BoxFit.cover,
+          alignment: Alignment.center,
+          child: TileWidget(tile),
+        ),
+      ),
+    );
   }
 
   Future<void> _persistCastle() async {
@@ -1385,31 +1479,40 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     }
   }
 
+  /// Explicit commit — only used by Save and close.
   Future<void> _saveAndPop() async {
     if (_isSaving) return;
     _isSaving = true;
     try {
       await _persistCastle();
-      if (mounted) Navigator.pop(context);
+      if (!mounted) return;
+      Navigator.of(context).pop();
     } finally {
       _isSaving = false;
     }
   }
 
-  void _cancelChanges() {
-    Navigator.pop(context);
+  /// Back arrow, swipe/system back, Cancel, and breadcrumb leave without saving.
+  void _discardAndPop() {
+    if (_isSaving) return;
+    Navigator.of(context).pop();
+  }
+
+  void _discardToHome() {
+    if (_isSaving) return;
+    NavigationHelper.popToHome(context);
   }
 
   Widget _getCancelButton() => FloatingActionButton.extended(
         heroTag: 'cancel',
         icon: Icon(Icons.cancel_outlined),
         label: Text('Cancel changes'),
-        onPressed: _isSaving ? null : _cancelChanges,
+        onPressed: _isSaving ? null : _discardAndPop,
       );
 
   Widget _getSaveAndCloseButton() => FloatingActionButton.extended(
         heroTag: 'save_close',
-        icon: Icon(Icons.arrow_back),
+        icon: Icon(Icons.check),
         label: Text('Save and close'),
         onPressed: _isSaving ? null : _saveAndPop,
       );
@@ -1439,41 +1542,104 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final editing = widget.updateCastleCallback != null;
-    final segments = <String>[
-      widget.gameTitle ?? 'Game',
-      if (editing) widget.existingCastle?.title ?? 'Castle',
-      editing ? 'Edit' : 'Build',
-    ];
-
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        await _saveAndPop();
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          title: FlowBreadcrumb(
-            segments: segments,
-            onFirstSegmentTap: _saveAndPop,
+  void _showEditHelpDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Editing a castle'),
+        content: const SingleChildScrollView(
+          child: Text(
+            'Tap an empty or filled slot on the grid to select it and open '
+            'its details.\n\n'
+            'Long-press a tile on the grid to drag and drop it onto another '
+            'slot.\n\n'
+            'Zoom with the + and - buttons on the map (or pinch) to get a '
+            'closer look while editing.\n\n'
+            'With a slot selected, use New Tile (or Update) to browse by '
+            'category, or type in Search tiles to find a room by name. Tap a '
+            'search result to preview it, then Add or Update selected tile '
+            'to place it.\n\n'
+            'Placement rules:\n'
+            '• Rooms must connect to the castle (or fill an interior hole).\n'
+            '• Upper floors need a room directly below; downstairs rooms '
+            'need a room directly above.\n'
+            '• Downstairs rooms go below the throne row; Activity and most '
+            'other rooms go on or above ground.\n'
+            '• Nothing can sit above Outdoor, Tower, or Fountain.\n'
+            '• Invalid placements show a warning on the tile.\n\n'
+            'Bonus cards and Royal attendants are not placed on the grid. '
+            'Open the Bonus & Royal attendants strip at the top, tap +, and '
+            'pick from the available tokens. Tap a token in the strip to '
+            'view or replace it.',
           ),
         ),
-        body: BackgroundContainer(
-          child: Column(
-            children: [
-              _getTokenStrip(),
-              Expanded(
-                child: _getBody(),
-              ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(
+              'OK',
+              style: TextStyle(color: Theme.of(ctx).colorScheme.primary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final readOnly = widget.readOnly;
+    final editing = widget.updateCastleCallback != null;
+    final gameName = widget.gameTitle ?? 'Game';
+    final castleName =
+        widget.existingCastle?.title ?? (editing ? 'Castle' : 'New Castle');
+    final segments = <String>[
+      gameName,
+      castleName,
+      if (readOnly) 'View' else if (editing) 'Edit' else 'Build',
+    ];
+
+    return Scaffold(
+      appBar: AppBar(
+        // Default back / swipe discards; only Save and close persists.
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: readOnly ? 'Back' : 'Discard changes',
+          onPressed: _isSaving ? null : _discardAndPop,
+        ),
+        title: FlowBreadcrumb(
+          showHome: true,
+          onHomeTap: _discardToHome,
+          segments: segments,
+          onSegmentTap: (index) {
+            // Game or castle name → leave without saving (same as back).
+            if (index == 0 || index == 1) {
+              _discardAndPop();
+            }
+          },
+        ),
+        actions: [
+          if (!readOnly)
+            IconButton(
+              icon: const Icon(Icons.help_outline),
+              tooltip: 'Help',
+              onPressed: _showEditHelpDialog,
+            ),
+        ],
+      ),
+      body: BackgroundContainer(
+        child: Column(
+          children: [
+            _getTokenStrip(),
+            Expanded(
+              child: _getBody(),
+            ),
+            if (!readOnly)
               Align(
                 alignment: FractionalOffset.bottomCenter,
                 child: _getBottomSheet(),
               ),
-            ],
-          ),
+          ],
         ),
       ),
     );

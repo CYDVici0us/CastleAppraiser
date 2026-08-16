@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/utils/log.dart';
+import 'package:btcc/src/utils/navigation_helper.dart';
 import 'package:btcc/src/utils/statistics_helper.dart';
-import 'package:btcc/src/utils/typedefs.dart';
 import 'package:btcc/src/widgets/async_confirmation_dialog.dart';
 import 'package:btcc/src/widgets/background_container.dart';
 import 'package:btcc/src/widgets/castle/castle_export_card.dart';
@@ -17,47 +17,93 @@ import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:screenshot/screenshot.dart';
+import 'package:share_plus/share_plus.dart';
 
 class CastleScreen extends StatelessWidget {
 
   final Castle castle;
   final bool onlyShowScoreCard;
-  final DeleteCastleCallback? deleteCastleCallback;
-  final VoidCallback? editCastleCallback;
   final VoidCallback? renameCastleCallback;
   final String? gameTitle;
 
   CastleScreen({
     required this.castle,
     this.onlyShowScoreCard=false,
-    this.deleteCastleCallback,
-    this.editCastleCallback,
     this.renameCastleCallback,
     this.gameTitle,
   });
 
-  _onDeletePress(BuildContext context) {
-    var deleted = false;
-    showDialog(
-      context: context,
-      builder: (_) => AsyncConfirmationDialog(
-        confirmationText: 'Are you sure you want to delete this castle?',
-        progressText: 'Deleting castle...',
-        popOnYes: true,
-        onPressedYes: () async {
-          await deleteCastleCallback!(castle);
-          deleted = true;
-          return 'Successfully deleted castle!';
-        },
-      )
-    ).then((_) {
-      if (deleted && context.mounted) {
-        Navigator.of(context).pop();
-      }
-    });
+  void _openCastleView(BuildContext context) {
+    NavigationHelper.goToCastleBuilderScreen(
+      context,
+      castleTiles: castle.castleTiles,
+      imagePath: castle.hiveCastle?.imagePath,
+      existingCastle: castle,
+      gameTitle: gameTitle,
+      readOnly: true,
+    );
   }
 
-  _onModalFabPressed(BuildContext context, ScreenshotController controller) {
+  void _openShareModal(BuildContext context) {
+    final controller = ScreenshotController();
+    Navigator.of(context).push(InteractiveModal(
+      CastleExportCard(castle: castle),
+      controller,
+      (c) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton(
+            heroTag: 'share_castle',
+            tooltip: 'Share',
+            child: const Icon(Icons.share),
+            onPressed: () => _onSharePressed(context, c),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton(
+            heroTag: 'save_castle',
+            tooltip: 'Save',
+            child: const Icon(Icons.download),
+            onPressed: () => _onSavePressed(context, c),
+          ),
+        ],
+      ),
+    ));
+  }
+
+  Future<void> _onSharePressed(
+    BuildContext context,
+    ScreenshotController controller,
+  ) async {
+    final pixelRatio = MediaQuery.of(context).devicePixelRatio;
+    try {
+      final bytes = await controller.capture(
+        pixelRatio: Platform.isWindows ? 1.75 * pixelRatio : 3 * pixelRatio,
+      );
+      if (bytes == null) {
+        throw Exception('Failed to capture screenshot');
+      }
+      final directory = await getTemporaryDirectory();
+      final fileName =
+          '${castle.title}_${DateTime.now().microsecondsSinceEpoch}.png';
+      final file = File('${directory.path}/$fileName');
+      await file.writeAsBytes(bytes);
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path)],
+          text: castle.hiveCastle?.title ?? castle.title,
+        ),
+      );
+    } catch (exception) {
+      log('Error sharing castle image: $exception');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not share image: $exception')),
+        );
+      }
+    }
+  }
+
+  void _onSavePressed(BuildContext context, ScreenshotController controller) {
     showDialog(
       context: context,
       builder: (_) => AsyncConfirmationDialog(
@@ -125,13 +171,17 @@ class CastleScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: FlowBreadcrumb(
+          showHome: true,
+          onHomeTap: () => NavigationHelper.popToHome(context),
           segments: [
             if (gameTitle != null) gameTitle!,
-            'Scoring',
+            title,
           ],
-          onFirstSegmentTap: gameTitle == null
+          onSegmentTap: gameTitle == null
               ? null
-              : () => Navigator.of(context).pop(),
+              : (index) {
+                  if (index == 0) Navigator.of(context).pop();
+                },
         ),
         actions: [
           if (renameCastleCallback != null) IconButton(
@@ -141,19 +191,11 @@ class CastleScreen extends StatelessWidget {
               renameCastleCallback!();
             },
           ),
-          if (editCastleCallback != null) IconButton(
-            icon: Icon(Icons.edit),
-            tooltip: 'Edit tiles',
-            onPressed: () {
-              final cb = editCastleCallback!;
-              Navigator.of(context).pop();
-              cb();
-            },
+          if (!onlyShowScoreCard) IconButton(
+            icon: const Icon(Icons.share),
+            tooltip: 'Share',
+            onPressed: () => _openShareModal(context),
           ),
-          if (deleteCastleCallback != null) IconButton(
-            icon: Icon(Icons.delete),
-            onPressed: () => _onDeletePress(context),
-          )
         ],
       ),
       body: BackgroundContainer(
@@ -193,17 +235,13 @@ class CastleScreen extends StatelessWidget {
                   ),
                 ),
                 if (!onlyShowScoreCard) ...[
-                  InteractiveModalWidget(
+                  InkWell(
+                    onTap: () => _openCastleView(context),
                     child: CastleImage(castle),
                   ),
-                  InteractiveModalWidget(
+                  InkWell(
+                    onTap: () => _openCastleView(context),
                     child: CastleTilesGrid(castle.castleTiles),
-                    modalChild: CastleExportCard(castle: castle),
-                    builder: (controller) => FloatingActionButton(
-                      child: Icon(Icons.screenshot),
-                      onPressed: () =>
-                          _onModalFabPressed(context, controller),
-                    ),
                   ),
                 ],
                 _sectionHeader(context, 'Points per tile'),

@@ -275,10 +275,19 @@ class _LargePickerCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final name = _pickerDisplayName(tile);
-    final showScoring = ScoringBlurb.hasContent(tile);
-    final showGrid = ScoringPlacementMapping.shouldShow(tile);
+    final showDetails =
+        ScoringBlurb.hasContent(tile, includeDecoration: false) ||
+            ScoringPlacementMapping.shouldShow(tile);
+    final ornament = tile.decorationType != DecorationType.None
+        ? TokenTileGrid.humanizeCamelCase(
+            tile.decorationType.toString().split('.').last,
+          )
+        : null;
     final titleStyle = theme.textTheme.titleLarge?.copyWith(
       fontWeight: FontWeight.w700,
+    );
+    final ornamentStyle = theme.textTheme.bodyMedium?.copyWith(
+      color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
     );
 
     return Card(
@@ -289,9 +298,25 @@ class _LargePickerCard extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 14, 14, 14),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TileWidget(tile, scale: 1.05),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TileWidget(tile, scale: 1.05),
+                  if (ornament != null) ...[
+                    const SizedBox(height: 4),
+                    SizedBox(
+                      width: TileWidget.defaultTileWidthHeight * 1.05,
+                      child: Text(
+                        ornament,
+                        style: ornamentStyle,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -302,13 +327,13 @@ class _LargePickerCard extends StatelessWidget {
                       title: name,
                       style: titleStyle,
                     ),
-                    if (showScoring) ...[
+                    if (showDetails) ...[
                       const SizedBox(height: 6),
-                      ScoringBlurb(tile: tile),
-                    ],
-                    if (showGrid) ...[
-                      const SizedBox(height: 10),
-                      ScoringPlacementGrid.forTile(tile, cellSize: 16),
+                      ScoringDetailsRow(
+                        tile: tile,
+                        includeDecoration: false,
+                        gridCellSize: 16,
+                      ),
                     ],
                   ],
                 ),
@@ -333,7 +358,17 @@ class _ThronePickerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final showScoring = ScoringBlurb.hasContent(tile);
+    final theme = Theme.of(context);
+    final showDetails = ScoringBlurb.hasContent(tile) ||
+        ScoringPlacementMapping.shouldShow(tile);
+    final ornament = tile.decorationType != DecorationType.None
+        ? TokenTileGrid.humanizeCamelCase(
+            tile.decorationType.toString().split('.').last,
+          )
+        : null;
+    final ornamentStyle = theme.textTheme.bodyMedium?.copyWith(
+      color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+    );
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6),
@@ -354,20 +389,22 @@ class _ThronePickerCard extends StatelessWidget {
                   return TileWidget(tile, scale: scale);
                 },
               ),
-              if (showScoring) ...[
-                const SizedBox(height: 12),
-                ScoringBlurb(
-                  tile: tile,
+              if (ornament != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  ornament,
                   textAlign: TextAlign.center,
+                  style: ornamentStyle,
                 ),
               ],
-              const SizedBox(height: 10),
-              Center(
-                child: ScoringPlacementGrid.throne(
-                  positions: tile.scoringPositions,
-                  cellSize: 14,
+              if (showDetails) ...[
+                const SizedBox(height: 12),
+                ScoringDetailsRow(
+                  tile: tile,
+                  textAlign: TextAlign.start,
+                  gridCellSize: 14,
                 ),
-              ),
+              ],
             ],
           ),
         ),

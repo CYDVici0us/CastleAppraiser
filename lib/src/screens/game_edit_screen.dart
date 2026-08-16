@@ -25,6 +25,7 @@ class GameEditScreen extends StatefulWidget {
 class _GameEditScreenState extends State<GameEditScreen> {
   
   Game? game;
+  bool _sorting = false;
 
   _GameEditScreenState({this.game});
 
@@ -200,21 +201,32 @@ class _GameEditScreenState extends State<GameEditScreen> {
     NavigationHelper.goToCastleScreen(
       context,
       castle,
-      deleteCastleCallback: _deleteCastle,
-      editCastleCallback: () => _editCastle(castle),
       renameCastleCallback: () => _renameCastle(castle),
       gameTitle: game?.title,
     );
   }
 
   Widget _getTitle() {
-    if (game == null) {
-      return const FlowBreadcrumb(segments: ['New Game']);
-    }
+    final gameName = game?.title ?? 'New Game';
+    final segments = <String>[
+      gameName,
+      if (_sorting) 'Sort',
+    ];
     return FlowBreadcrumb(
-      segments: [game!.title],
-      onFirstSegmentTap: _renameGame,
+      showHome: true,
+      onHomeTap: () => NavigationHelper.popToHome(context),
+      segments: segments,
+      onSegmentTap: (index) {
+        // Game name while sorting → return to castles view.
+        if (index == 0 && _sorting) {
+          setState(() => _sorting = false);
+        }
+      },
     );
+  }
+
+  void _exitSorting() {
+    if (_sorting) setState(() => _sorting = false);
   }
 
   Color _getCastleItemColor(Castle castle) {
@@ -227,6 +239,7 @@ class _GameEditScreenState extends State<GameEditScreen> {
       castles: null,
       playerNames: const [],
     )),
+    sorting: _sorting,
     rearrangedCastlesCallback: _rearrangedCastles,
     rearrangedPlayersCallback: _rearrangedPlayers,
     deleteCallback: _deleteCastle,
@@ -242,91 +255,133 @@ class _GameEditScreenState extends State<GameEditScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        content: Text(
-          'Rearrange castles and players by long pressing to drag and drop.\n\n'
+        content: const Text(
+          'Tap the reorder icon to rearrange castles and players by dragging.\n\n'
           'Players sit between castles (including after the last castle for the wrap-around).\n\n'
-          'The winner is marked with a Winner badge — the player between the two highest-scoring adjacent castles.\n\n'
+          'The winner is marked with a Winner badge: the player between the two highest-scoring adjacent castles.\n\n'
           'Extra players beyond the number of castles appear at the bottom.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('OK',
+            child: Text(
+              'OK',
               style: TextStyle(
                 color: Theme.of(ctx).colorScheme.primary,
-              )
+              ),
             ),
           ),
         ],
-      )
+      ),
+    );
+  }
+
+  Widget _bottomActions() {
+    if (_sorting) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: SizedBox(
+          width: double.infinity,
+          child: FloatingActionButton.extended(
+            heroTag: 'sorting',
+            label: const Text('Finish sorting'),
+            icon: const Icon(Icons.check),
+            onPressed: _exitSorting,
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        const SizedBox(width: 8),
+        FloatingActionButton.extended(
+          heroTag: '2',
+          label: const Text('Build castle'),
+          icon: const Icon(Icons.build),
+          onPressed: _onBuildCastle,
+        ),
+        const Spacer(),
+        Consumer<CameraStore>(
+          builder: (_, cameraStore, __) => FloatingActionButton.extended(
+            heroTag: '1',
+            label: const Text('Add Castle'),
+            icon: const Icon(Icons.camera_alt),
+            onPressed: () => NavigationHelper.goToCameraExperience(
+              context,
+              addCastleCallback: _addCastle,
+              numPicturesTaken: 0,
+              replace: false,
+              cameraTech: cameraStore.cameraTech,
+              gameTitle: game?.title ?? 'New Game',
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: _getTitle(),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.edit),
-            tooltip: 'Rename game',
-            onPressed: game == null ? null : _renameGame,
-          ),
-          IconButton(
-            icon: Icon(Icons.person_add),
-            tooltip: 'Add player',
-            onPressed: _addPlayer,
-          ),
-          IconButton(
-            icon: Icon(Icons.help_outline),
-            onPressed: () => _showInfoDialog(context),
-          )
-        ],
-      ),
-      body: BackgroundContainer(
-        child: Column(
-          children: [
-            Expanded(
-              child: game == null || (game!.castles.isEmpty && game!.playerNames.isEmpty)
-                  ? const Center(child: Text('Add a castle or player to get started'))
-                  : _getCastleList(),
-            ),
-            ButtonPadding(),
-            Row(
-              children: [
-                Container(width:8),
-                FloatingActionButton.extended(
-                  heroTag: '2',
-                  label: Text('Build castle'),
-                  icon: Icon(Icons.build),
-                  onPressed: _onBuildCastle,
-                ),
-                Flexible(
-                  child: Container(),
-                ),
-                Consumer<CameraStore>(
-                  builder: (_, cameraStore, __) => FloatingActionButton.extended(
-                    heroTag: '1',
-                    label: Text('Add Castle'),
-                    icon: Icon(Icons.camera_alt),
-                    onPressed: () => NavigationHelper.goToCameraExperience(
-                      context,
-                      addCastleCallback: _addCastle,
-                      numPicturesTaken: 0,
-                      replace: false,
-                      cameraTech: cameraStore.cameraTech,
-                      gameTitle: game?.title ?? 'New Game',
-                    )
-                  )
-                ),
-                Container(width:8),
-              ],
-            ),
-            ButtonPadding(),
-          ]
+    final canReorder = !_sorting &&
+        game != null &&
+        (game!.castles.length + game!.playerNames.length) > 1;
+
+    return PopScope(
+      canPop: !_sorting,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_sorting) _exitSorting();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          // Default back arrow: one step up (or exit Sort via PopScope).
+          title: _getTitle(),
+          actions: [
+            if (canReorder)
+              IconButton(
+                icon: const Icon(Icons.swap_vert),
+                tooltip: 'Reorder',
+                onPressed: () => setState(() => _sorting = true),
+              ),
+            if (!_sorting) ...[
+              IconButton(
+                icon: const Icon(Icons.edit),
+                tooltip: 'Rename game',
+                onPressed: game == null ? null : _renameGame,
+              ),
+              IconButton(
+                icon: const Icon(Icons.person_add),
+                tooltip: 'Add player',
+                onPressed: _addPlayer,
+              ),
+              IconButton(
+                icon: const Icon(Icons.help_outline),
+                tooltip: 'Help',
+                onPressed: () => _showInfoDialog(context),
+              ),
+            ],
+          ],
         ),
-      )
+        body: BackgroundContainer(
+          child: Column(
+            children: [
+              Expanded(
+                child: game == null ||
+                        (game!.castles.isEmpty && game!.playerNames.isEmpty)
+                    ? const Center(
+                        child: Text('Add a castle or player to get started'),
+                      )
+                    : _getCastleList(),
+              ),
+              ButtonPadding(),
+              _bottomActions(),
+              ButtonPadding(),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

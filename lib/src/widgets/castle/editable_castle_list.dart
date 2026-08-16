@@ -33,8 +33,9 @@ class EditableCastleList extends StatelessWidget {
               castle: castles[index],
               deleteCallback: deleteCallback,
               color: getColorCallback(castles[index]),
-              onOpen: () => NavigationHelper.goToCastleScreen(context, castles[index],
-                deleteCastleCallback: deleteCallback,
+              onOpen: () => NavigationHelper.goToCastleScreen(
+                context,
+                castles[index],
               ),
             )
           )

@@ -6,7 +6,7 @@ import 'package:btcc/src/utils/tile_helper.dart';
 import 'package:btcc/src/utils/tile_placement.dart';
 
 /// Builds a debug starting castle: keeps a fixed footprint, randomizes rooms
-/// that obey [TilePlacement] rules (level types, support, outdoor stacking).
+/// that obey [TilePlacement] rules (level types, support, no-stack rooms).
 class RandomDebugCastle {
   RandomDebugCastle._();
 
@@ -94,10 +94,10 @@ class RandomDebugCastle {
     required int index,
     required List<Tile> pool,
   }) {
-    final shapeBlocksOutdoor = _shapeHasRoomAboveInColumn(template, index);
+    final shapeBlocksNoStack = _shapeHasRoomAboveInColumn(template, index);
 
     bool usable(Tile tile) {
-      if (TilePlacement.isTrueOutdoor(tile) && shapeBlocksOutdoor) {
+      if (TilePlacement.blocksRoomsAbove(tile) && shapeBlocksNoStack) {
         return false;
       }
       return TilePlacement.canPlaceTile(

@@ -74,15 +74,16 @@ void main() {
               reason: 'seed $seed floating basement ${tile.name} at $i',
             );
           }
-          // No true Outdoor under a room that exists in this column.
-          if (TilePlacement.isTrueOutdoor(tile)) {
+          // No Outdoor / Tower / Fountain under a room in this column.
+          if (TilePlacement.blocksRoomsAbove(tile)) {
             final above = i - w;
             if (above >= 0) {
               expect(
                 grid.items[above].isEmpty() ||
                     grid.items[above].isPlaceholder(),
                 isTrue,
-                reason: 'seed $seed outdoor ${tile.name} under room at $above',
+                reason:
+                    'seed $seed ${tile.name} under room at $above',
               );
             }
           }

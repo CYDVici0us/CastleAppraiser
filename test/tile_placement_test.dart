@@ -144,6 +144,40 @@ void main() {
       );
     });
 
+    test('blocks tile above tower and fountain', () {
+      final withTower = GridList<Tile>(4, [
+        Empty(), Empty(), Empty(), Empty(),
+        Empty(), ThroneRoomPerCorridorFood(), Placeholder(), Tower(),
+        Empty(), Empty(), Empty(), Empty(),
+      ]);
+      expect(TilePlacement.isTrueTowerOrFountain(Tower()), isTrue);
+      expect(TilePlacement.isTrueTowerOrFountain(Tower2()), isTrue);
+      expect(TilePlacement.isDirectlyAboveNoStackRoom(withTower, 3), isTrue);
+      expect(TilePlacement.canPlaceTile(withTower, 3, Kitchen()), isFalse);
+
+      final withFountain = GridList<Tile>(4, [
+        Empty(), Empty(), Empty(), Empty(),
+        Empty(), ThroneRoomPerCorridorFood(), Placeholder(), Fountain(),
+        Empty(), Empty(), Empty(), Empty(),
+      ]);
+      expect(TilePlacement.isTrueTowerOrFountain(Fountain()), isTrue);
+      expect(TilePlacement.isTrueTowerOrFountain(Fountain3()), isTrue);
+      expect(TilePlacement.isDirectlyAboveNoStackRoom(withFountain, 3), isTrue);
+      expect(TilePlacement.canPlaceTile(withFountain, 3, Kitchen()), isFalse);
+    });
+
+    test('blocks placing tower or fountain under an existing room', () {
+      final grid = GridList<Tile>(4, [
+        Empty(), Empty(), Empty(), Kitchen(),
+        Empty(), ThroneRoomPerCorridorFood(), Placeholder(), Empty(),
+        Empty(), Empty(), Empty(), Empty(),
+      ]);
+      expect(TilePlacement.canPlaceTile(grid, 7, Tower()), isFalse);
+      expect(TilePlacement.canPlaceTile(grid, 7, Fountain()), isFalse);
+      expect(TilePlacement.canPlaceTile(grid, 7, Biergarten()), isFalse);
+      expect(TilePlacement.canPlaceTile(grid, 7, Kitchen()), isTrue);
+    });
+
     test('allows tile above secret that copies outdoor', () {
       final secret = BehindTheBookCase()..duplicate = Biergarten();
       expect(secret.tileType, TileType.Outdoor);
@@ -166,6 +200,31 @@ void main() {
       ]);
       expect(
         TilePlacement.invalidReasons(stacked, 3),
+        isNot(contains(PlacementInvalidReason.aboveOutdoor)),
+      );
+    });
+
+    test('allows tile above secret that copies tower or fountain', () {
+      final secretTower = BehindTheBookCase()..duplicate = Tower();
+      expect(secretTower.tileType, TileType.Special);
+      expect(TilePlacement.blocksRoomsAbove(secretTower), isFalse);
+
+      final grid = GridList<Tile>(4, [
+        Empty(), Empty(), Empty(), Empty(),
+        Empty(), ThroneRoomPerCorridorFood(), Placeholder(), secretTower,
+        Empty(), Empty(), Empty(), Empty(),
+      ]);
+      expect(TilePlacement.isDirectlyAboveNoStackRoom(grid, 3), isFalse);
+      expect(TilePlacement.canPlaceTile(grid, 3, Kitchen()), isTrue);
+
+      final secretFountain = RideTheDumbWaiter()..duplicate = Fountain();
+      final withFountain = GridList<Tile>(4, [
+        Empty(), Empty(), Empty(), Kitchen(),
+        Empty(), ThroneRoomPerCorridorFood(), Placeholder(), secretFountain,
+        Empty(), Empty(), Empty(), Empty(),
+      ]);
+      expect(
+        TilePlacement.invalidReasons(withFountain, 3),
         isNot(contains(PlacementInvalidReason.aboveOutdoor)),
       );
     });
@@ -254,6 +313,28 @@ void main() {
       );
     });
 
+    test('blocks empty directly above tower and fountain', () {
+      final withTower = GridList<Tile>(4, [
+        Empty(), Empty(), Empty(), Empty(),
+        Empty(), ThroneRoomPerCorridorFood(), Placeholder(), Tower(),
+        Empty(), Empty(), Empty(), Empty(),
+      ]);
+      expect(
+        TilePlacement.canAddAtEmptyCell(withTower, 3, isOccupied: occupied),
+        isFalse,
+      );
+
+      final withFountain = GridList<Tile>(4, [
+        Empty(), Empty(), Empty(), Empty(),
+        Empty(), ThroneRoomPerCorridorFood(), Placeholder(), Fountain(),
+        Empty(), Empty(), Empty(), Empty(),
+      ]);
+      expect(
+        TilePlacement.canAddAtEmptyCell(withFountain, 3, isOccupied: occupied),
+        isFalse,
+      );
+    });
+
     test('blocks floating below-ground empties even when adjacent', () {
       final grid = _baseCastle(belowThrone: Dungeon());
       // Index 8 is beside the dungeon but under empty ground — floating.
@@ -320,6 +401,26 @@ void main() {
       // Throne at row 2; kitchen at 1 above outdoor at 5
       expect(
         TilePlacement.invalidReasons(stacked, 1),
+        contains(PlacementInvalidReason.aboveOutdoor),
+      );
+
+      final aboveTower = GridList<Tile>(4, [
+        Empty(), Kitchen(), Empty(), Empty(),
+        Empty(), Tower(), Empty(), Empty(),
+        Empty(), ThroneRoomPerCorridorFood(), Placeholder(), Empty(),
+      ]);
+      expect(
+        TilePlacement.invalidReasons(aboveTower, 1),
+        contains(PlacementInvalidReason.aboveOutdoor),
+      );
+
+      final aboveFountain = GridList<Tile>(4, [
+        Empty(), Kitchen(), Empty(), Empty(),
+        Empty(), Fountain(), Empty(), Empty(),
+        Empty(), ThroneRoomPerCorridorFood(), Placeholder(), Empty(),
+      ]);
+      expect(
+        TilePlacement.invalidReasons(aboveFountain, 1),
         contains(PlacementInvalidReason.aboveOutdoor),
       );
 
@@ -441,6 +542,26 @@ void main() {
         TilePlacement.invalidReasons(stacked, 0),
         contains(PlacementInvalidReason.unsupportedAboveGround),
       );
+    });
+
+    test('does not mark empty above tower or fountain as a gap', () {
+      final towerGap = GridList<Tile>(4, [
+        Empty(), Empty(), Empty(), Empty(),
+        Empty(), Empty(), Empty(), Empty(),
+        Tower(), ThroneRoomPerCorridorFood(), Placeholder(), Empty(),
+      ]);
+      expect(TilePlacement.isDirectlyAboveNoStackRoom(towerGap, 4), isTrue);
+      expect(TilePlacement.isInvalidStructuralGap(towerGap, 4), isFalse);
+      expect(TilePlacement.invalidReasons(towerGap, 4), isEmpty);
+
+      final fountainGap = GridList<Tile>(4, [
+        Empty(), Empty(), Empty(), Empty(),
+        Empty(), Empty(), Empty(), Empty(),
+        Fountain(), ThroneRoomPerCorridorFood(), Placeholder(), Empty(),
+      ]);
+      expect(TilePlacement.isDirectlyAboveNoStackRoom(fountainGap, 4), isTrue);
+      expect(TilePlacement.isInvalidStructuralGap(fountainGap, 4), isFalse);
+      expect(TilePlacement.invalidReasons(fountainGap, 4), isEmpty);
     });
 
     test('does not mark perimeter empty as gap', () {

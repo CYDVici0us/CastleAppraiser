@@ -33,6 +33,7 @@ class AppWidget extends StatelessWidget {
             backgroundColor: Color(0xFF121212),
             foregroundColor: Colors.white,
             elevation: 0,
+            titleSpacing: 0,
           ),
           floatingActionButtonTheme: const FloatingActionButtonThemeData(
             backgroundColor: Color(0xFF1E88E5),

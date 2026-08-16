@@ -10,6 +10,7 @@ enum CastleLevel {
 
 /// Why an occupied cell breaks placement rules (camera or edit leftovers).
 enum PlacementInvalidReason {
+  /// Room sits above Outdoor, Tower, or Fountain (nothing may stack there).
   aboveOutdoor,
   unsupportedAboveGround,
   /// Below-ground room with no tile directly above (floating basement).
@@ -76,10 +77,10 @@ class TilePlacement {
 
   /// Whether an empty cell may receive a newly added room.
   ///
-  /// Requires ortho adjacency (or an interior hole), blocks above Outdoor,
-  /// blocks above-ground cells with no support below, and blocks below-ground
-  /// cells with no support above — so floating floors/basements cannot start
-  /// from the add/search UI.
+  /// Requires ortho adjacency (or an interior hole), blocks above Outdoor /
+  /// Tower / Fountain, blocks above-ground cells with no support below, and
+  /// blocks below-ground cells with no support above — so floating
+  /// floors/basements cannot start from the add/search UI.
   static bool canAddAtEmptyCell(
     GridList<Tile> grid,
     int index, {
@@ -87,7 +88,7 @@ class TilePlacement {
   }) {
     if (index < 0 || index >= grid.items.length) return false;
     if (!grid.items[index].isEmpty()) return false;
-    if (isDirectlyAboveOutdoor(grid, index)) return false;
+    if (isDirectlyAboveNoStackRoom(grid, index)) return false;
 
     final level = levelRelativeToGround(grid, index);
     if (level == CastleLevel.above && !hasSupportBelow(grid, index)) {
@@ -151,28 +152,46 @@ class TilePlacement {
   static bool isTrueOutdoor(Tile tile) =>
       tile.trueTileType == TileType.Outdoor;
 
-  /// True when [index] is the cell immediately above a true Outdoor tile.
-  static bool isDirectlyAboveOutdoor(GridList<Tile> grid, int index) {
+  /// True Tower / Fountain specials (all print variants). Secrets that copy
+  /// them keep a different [Tile.name] / id — those may have rooms above.
+  static bool isTrueTowerOrFountain(Tile tile) =>
+      tile.name == 'Tower' || tile.name == 'Fountain';
+
+  /// Rooms that may not have any tile stacked above them.
+  static bool blocksRoomsAbove(Tile tile) =>
+      isTrueOutdoor(tile) || isTrueTowerOrFountain(tile);
+
+  /// True when [index] is the cell immediately above a no-stack room.
+  static bool isDirectlyAboveNoStackRoom(GridList<Tile> grid, int index) {
     if (index < 0 || index >= grid.items.length) return false;
     final below = index + grid.width;
     if (below >= grid.items.length) return false;
-    return isTrueOutdoor(grid.items[below]);
+    return blocksRoomsAbove(grid.items[below]);
   }
 
-  /// True when placing an Outdoor at [index] would put it under an occupied cell.
-  static bool wouldPutOutdoorUnderTile(GridList<Tile> grid, int index) {
+  /// Alias for [isDirectlyAboveNoStackRoom] (historical Outdoor-only name).
+  static bool isDirectlyAboveOutdoor(GridList<Tile> grid, int index) =>
+      isDirectlyAboveNoStackRoom(grid, index);
+
+  /// True when placing a no-stack room at [index] would put it under an occupied cell.
+  static bool wouldPutNoStackRoomUnderTile(GridList<Tile> grid, int index) {
     if (index < 0 || index >= grid.items.length) return false;
     final above = index - grid.width;
     if (above < 0) return false;
     return !grid.items[above].isEmpty();
   }
 
+  /// Alias for [wouldPutNoStackRoomUnderTile].
+  static bool wouldPutOutdoorUnderTile(GridList<Tile> grid, int index) =>
+      wouldPutNoStackRoomUnderTile(grid, index);
+
   /// Whether [tile] may be placed at [index].
   ///
   /// [requireSupport] applies to above-ground (needs tile below) and
   /// below-ground (needs tile above). Use false when replacing an already
   /// illegal camera cell that may be floating.
-  /// [allowAboveOutdoor] allows replacing an already-illegal above-Outdoor cell.
+  /// [allowAboveOutdoor] allows replacing an already-illegal cell above a
+  /// no-stack room (Outdoor / Tower / Fountain).
   static bool canPlaceTile(
     GridList<Tile> grid,
     int index,
@@ -185,10 +204,10 @@ class TilePlacement {
     // Bonus / royal attendants belong on the token strip, not the castle map.
     if (tile.isBonusCard() || tile.isRoyalAttendant()) return false;
 
-    if (!allowAboveOutdoor && isDirectlyAboveOutdoor(grid, index)) {
+    if (!allowAboveOutdoor && isDirectlyAboveNoStackRoom(grid, index)) {
       return false;
     }
-    if (isTrueOutdoor(tile) && wouldPutOutdoorUnderTile(grid, index)) {
+    if (blocksRoomsAbove(tile) && wouldPutNoStackRoomUnderTile(grid, index)) {
       return false;
     }
 
@@ -231,7 +250,7 @@ class TilePlacement {
     if (tile.tileType == TileType.ThroneRoom) return const [];
 
     final reasons = <PlacementInvalidReason>[];
-    if (isDirectlyAboveOutdoor(grid, index)) {
+    if (isDirectlyAboveNoStackRoom(grid, index)) {
       reasons.add(PlacementInvalidReason.aboveOutdoor);
     }
 
@@ -252,13 +271,14 @@ class TilePlacement {
   ///
   /// - Missing support under an upper-floor room, or above a below-ground room
   /// - Horizontal holes on the **ground** row only (above/below may have gaps)
-  /// Empty cells directly above Outdoor are never gaps (unbuildable by rule).
+  /// Empty cells directly above Outdoor / Tower / Fountain are never gaps
+  /// (unbuildable by rule).
   static bool isInvalidStructuralGap(GridList<Tile> grid, int index) {
     if (index < 0 || index >= grid.items.length) return false;
     if (!grid.items[index].isEmpty()) return false;
 
-    // Intentionally empty — nothing may be built above Outdoor.
-    if (isDirectlyAboveOutdoor(grid, index)) return false;
+    // Intentionally empty — nothing may be built above these rooms.
+    if (isDirectlyAboveNoStackRoom(grid, index)) return false;
 
     final w = grid.width;
     final above = index - w;
@@ -307,7 +327,7 @@ class TilePlacement {
   static bool hasInvalidPlacement(GridList<Tile> grid, int index) =>
       invalidReasons(grid, index).isNotEmpty;
 
-  /// Occupied cell that sits directly above an Outdoor tile.
+  /// Occupied cell that sits directly above Outdoor / Tower / Fountain.
   static bool hasInvalidAboveOutdoorPlacement(GridList<Tile> grid, int index) =>
       invalidReasons(grid, index)
           .contains(PlacementInvalidReason.aboveOutdoor);
@@ -315,7 +335,7 @@ class TilePlacement {
   static String describeInvalidReason(PlacementInvalidReason reason) {
     switch (reason) {
       case PlacementInvalidReason.aboveOutdoor:
-        return 'Cannot sit above Outdoor';
+        return 'Cannot sit above Outdoor, Tower, or Fountain';
       case PlacementInvalidReason.unsupportedAboveGround:
         return 'Needs a tile below for support';
       case PlacementInvalidReason.unsupportedBelowGround:
@@ -858,30 +878,30 @@ enum OrthogonalMoveResult {
 
 /// All placeable categories including token strip types.
 const List<TileType> kAllPickerTileTypes = [
-  TileType.Corridor,
-  TileType.Downstairs,
   TileType.Food,
   TileType.Living,
+  TileType.Utility,
   TileType.Outdoor,
   TileType.Sleeping,
-  TileType.Special,
-  TileType.Utility,
   TileType.Activity,
+  TileType.Corridor,
   TileType.Secret,
+  TileType.Downstairs,
+  TileType.Special,
   TileType.RoyalAttendant,
   TileType.BonusCard,
 ];
 
 /// Structural castle picker categories (rooms only).
 const List<TileType> kStructuralPickerTileTypes = [
-  TileType.Corridor,
-  TileType.Downstairs,
   TileType.Food,
   TileType.Living,
+  TileType.Utility,
   TileType.Outdoor,
   TileType.Sleeping,
-  TileType.Special,
-  TileType.Utility,
   TileType.Activity,
+  TileType.Corridor,
   TileType.Secret,
+  TileType.Downstairs,
+  TileType.Special,
 ];

@@ -14,8 +14,9 @@ class _Entry {
   _Entry.player(this.index) : kind = _EntryKind.player;
 }
 
-class EditableGameList extends StatefulWidget {
+class EditableGameList extends StatelessWidget {
   final Game game;
+  final bool sorting;
   final DeleteCastleCallback deleteCallback;
   final void Function(List<int> castlePermutation) rearrangedCastlesCallback;
   final void Function(List<String> newPlayerOrder) rearrangedPlayersCallback;
@@ -26,9 +27,10 @@ class EditableGameList extends StatefulWidget {
   final void Function(Castle castle)? editCastleCallback;
   final Color Function(Castle castle)? getCastleColorCallback;
 
-  EditableGameList({
+  const EditableGameList({
     super.key,
     required this.game,
+    this.sorting = false,
     required this.deleteCallback,
     required this.rearrangedCastlesCallback,
     required this.rearrangedPlayersCallback,
@@ -40,17 +42,9 @@ class EditableGameList extends StatefulWidget {
     this.getCastleColorCallback,
   });
 
-  @override
-  State<EditableGameList> createState() => _EditableGameListState();
-}
-
-class _EditableGameListState extends State<EditableGameList> {
-  /// While any list item is dragged, castles collapse to header-only.
-  bool _reordering = false;
-
   List<_Entry> _buildEntries() {
-    final castles = widget.game.castles;
-    final players = widget.game.playerNames;
+    final castles = game.castles;
+    final players = game.playerNames;
     final entries = <_Entry>[];
     final slotCount = castles.length;
 
@@ -66,11 +60,12 @@ class _EditableGameListState extends State<EditableGameList> {
     return entries;
   }
 
-  void _onReorder(int oldIndex, int newIndex) {
+  void _onReorderItem(int oldIndex, int newIndex) {
+    if (!sorting) return;
+
     final entries = _buildEntries();
     if (oldIndex < 0 || oldIndex >= entries.length) return;
-    if (newIndex > entries.length) newIndex = entries.length;
-    if (oldIndex < newIndex) newIndex -= 1;
+    if (newIndex < 0 || newIndex > entries.length) return;
 
     final moved = entries.removeAt(oldIndex);
     entries.insert(newIndex.clamp(0, entries.length), moved);
@@ -84,9 +79,9 @@ class _EditableGameListState extends State<EditableGameList> {
         .map((e) => e.index)
         .toList();
 
-    final originalPlayers = widget.game.playerNames.toList();
+    final originalPlayers = game.playerNames.toList();
 
-    bool castlesChanged = false;
+    var castlesChanged = false;
     for (var i = 0; i < castleOrder.length; i++) {
       if (castleOrder[i] != i) {
         castlesChanged = true;
@@ -94,11 +89,11 @@ class _EditableGameListState extends State<EditableGameList> {
       }
     }
     if (castlesChanged) {
-      widget.rearrangedCastlesCallback(castleOrder);
+      rearrangedCastlesCallback(castleOrder);
     }
 
     final newPlayerNames = playerOrder.map((i) => originalPlayers[i]).toList();
-    bool playersChanged = false;
+    var playersChanged = false;
     for (var i = 0; i < newPlayerNames.length; i++) {
       if (newPlayerNames[i] != originalPlayers[i]) {
         playersChanged = true;
@@ -106,54 +101,52 @@ class _EditableGameListState extends State<EditableGameList> {
       }
     }
     if (playersChanged) {
-      widget.rearrangedPlayersCallback(newPlayerNames);
+      rearrangedPlayersCallback(newPlayerNames);
     }
   }
 
-  void _shiftCastle(int castleIndex, int delta) {
-    final count = widget.game.castles.length;
-    final target = castleIndex + delta;
-    if (target < 0 || target >= count) return;
+  Widget _dragHandle(int index, {bool castleStyle = false}) {
+    final visual = castleStyle
+        ? const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 40, vertical: 2),
+            child: _CastleDragHandleVisual(),
+          )
+        : const Icon(Icons.drag_handle, color: Colors.white70);
 
-    final permutation = List<int>.generate(count, (i) => i);
-    permutation[castleIndex] = target;
-    permutation[target] = castleIndex;
-    widget.rearrangedCastlesCallback(permutation);
+    return ReorderableDragStartListener(
+      index: index,
+      child: visual,
+    );
   }
 
-  void _setReordering(bool value) {
-    if (_reordering == value) return;
-    setState(() => _reordering = value);
-  }
-
-  Widget _castleTile(Castle castle, int castleIndex, {required bool headerOnly}) {
+  Widget _castleTile(
+    Castle castle,
+    int castleIndex, {
+    required int listIndex,
+    double? maxGridHeight,
+  }) {
     return Padding(
       padding: const EdgeInsets.all(4),
       child: CastleListItem(
         castle: castle,
-        deleteCallback: widget.deleteCallback,
-              color: widget.getCastleColorCallback?.call(castle) ?? AppColors.card,
-        headerOnly: headerOnly,
-        onOpen: () => widget.openCastleCallback(castle),
-        onRename: widget.renameCastleCallback == null
+        deleteCallback: deleteCallback,
+        color: getCastleColorCallback?.call(castle) ?? AppColors.card,
+        headerOnly: sorting,
+        maxGridHeight: maxGridHeight,
+        dragHandle: sorting ? _dragHandle(listIndex, castleStyle: true) : null,
+        onOpen: sorting ? null : () => openCastleCallback(castle),
+        onRename: sorting || renameCastleCallback == null
             ? null
-            : () => widget.renameCastleCallback!(castle),
-        onEdit: widget.editCastleCallback == null
+            : () => renameCastleCallback!(castle),
+        onEdit: sorting || editCastleCallback == null
             ? null
-            : () => widget.editCastleCallback!(castle),
-        onMoveUp: castleIndex > 0
-            ? () => _shiftCastle(castleIndex, -1)
-            : null,
-        onMoveDown: castleIndex < widget.game.castles.length - 1
-            ? () => _shiftCastle(castleIndex, 1)
-            : null,
+            : () => editCastleCallback!(castle),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final game = widget.game;
     final entries = _buildEntries();
     final winningPlayer = game.getWinningPlayerIndex();
     final slotCount = game.castles.length;
@@ -165,116 +158,144 @@ class _EditableGameListState extends State<EditableGameList> {
       );
     }
 
-    return ReorderableListView.builder(
-      buildDefaultDragHandles: true,
-      onReorder: _onReorder,
-      onReorderStart: (_) => _setReordering(true),
-      onReorderEnd: (_) => _setReordering(false),
-      proxyDecorator: (child, index, animation) {
-        // Drag proxy is captured at lift time (often still expanded). Rebuild
-        // castles as header-only so the moving card matches the collapsed list.
-        Widget feedback = child;
-        if (index >= 0 && index < entries.length) {
-          final entry = entries[index];
-          if (entry.kind == _EntryKind.castle) {
-            feedback = _castleTile(
-              game.castles[entry.index],
-              entry.index,
-              headerOnly: true,
-            );
-          }
-        }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Half the list viewport — between app bar and footer buttons.
+        final maxGridHeight =
+            sorting ? null : constraints.maxHeight * 0.5;
 
-        return AnimatedBuilder(
-          animation: animation,
-          builder: (context, child) {
-            final t = Curves.easeInOut.transform(animation.value);
-            return Material(
-              elevation: 8 + 8 * t,
-              color: Colors.transparent,
-              borderRadius: BorderRadius.circular(20),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
+        return ReorderableListView.builder(
+          buildDefaultDragHandles: false,
+          onReorderItem: _onReorderItem,
+          proxyDecorator: (child, index, animation) {
+            Widget feedback = child;
+            if (index >= 0 && index < entries.length) {
+              final entry = entries[index];
+              if (entry.kind == _EntryKind.castle) {
+                feedback = _castleTile(
+                  game.castles[entry.index],
+                  entry.index,
+                  listIndex: index,
+                  maxGridHeight: maxGridHeight,
+                );
+              }
+            }
+
+            return AnimatedBuilder(
+              animation: animation,
+              builder: (context, child) {
+                final t = Curves.easeInOut.transform(animation.value);
+                return Material(
+                  elevation: 8 + 8 * t,
+                  color: Colors.transparent,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: Color.lerp(
-                      Colors.white54,
-                      Colors.white,
-                      t,
-                    )!,
-                    width: 2 + t,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.35 * t),
-                      blurRadius: 12 * t,
-                      offset: Offset(0, 4 * t),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Color.lerp(Colors.white54, Colors.white, t)!,
+                        width: 2 + t,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.35 * t),
+                          blurRadius: 12 * t,
+                          offset: Offset(0, 4 * t),
+                        ),
+                      ],
                     ),
-                  ],
+                    child: child,
+                  ),
+                );
+              },
+              child: feedback,
+            );
+          },
+          itemCount: entries.length,
+          itemBuilder: (context, index) {
+            final entry = entries[index];
+            final showBenchHeader = hasBench &&
+                entry.kind == _EntryKind.player &&
+                entry.index == slotCount;
+
+            if (entry.kind == _EntryKind.castle) {
+              final castle = game.castles[entry.index];
+              return KeyedSubtree(
+                key: ValueKey('castle-${castle.hiveCastle!.key}'),
+                child: _castleTile(
+                  castle,
+                  entry.index,
+                  listIndex: index,
+                  maxGridHeight: maxGridHeight,
                 ),
-                child: child,
+              );
+            }
+
+            final isBench = entry.index >= slotCount;
+            return Padding(
+              key: ValueKey(
+                  'player-${entry.index}-${game.playerNames[entry.index]}'),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (showBenchHeader)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 6, top: 8),
+                      child: Text(
+                        'Extra players',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ),
+                  PlayerListItem(
+                    name: game.playerNames[entry.index],
+                    score: isBench ? null : game.getPlayerScore(entry.index),
+                    primaryCastleDirection: isBench || sorting
+                        ? null
+                        : game.getPlayerPrimaryCastleDirection(entry.index),
+                    isWinner: !sorting && winningPlayer == entry.index,
+                    isBench: isBench,
+                    dragHandle: sorting ? _dragHandle(index) : null,
+                    onRename: sorting
+                        ? null
+                        : () => renamePlayerCallback(entry.index),
+                    onDelete: !sorting &&
+                            isBench &&
+                            deletePlayerCallback != null
+                        ? () => deletePlayerCallback!(entry.index)
+                        : null,
+                  ),
+                ],
               ),
             );
           },
-          child: feedback,
         );
       },
-      itemCount: entries.length,
-      itemBuilder: (context, index) {
-        final entry = entries[index];
-        final showBenchHeader = hasBench &&
-            entry.kind == _EntryKind.player &&
-            entry.index == slotCount;
+    );
+  }
+}
 
-        if (entry.kind == _EntryKind.castle) {
-          final castle = game.castles[entry.index];
-          return KeyedSubtree(
-            key: ValueKey('castle-${castle.hiveCastle!.key}'),
-            child: _castleTile(
-              castle,
-              entry.index,
-              headerOnly: _reordering,
-            ),
-          );
-        }
+/// Short, wide grabber for castle cards.
+class _CastleDragHandleVisual extends StatelessWidget {
+  const _CastleDragHandleVisual();
 
-        final isBench = entry.index >= slotCount;
-        return Padding(
-          key: ValueKey(
-              'player-${entry.index}-${game.playerNames[entry.index]}'),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (showBenchHeader)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 6, top: 8),
-                  child: Text(
-                    'Extra players',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white70,
-                    ),
-                  ),
-                ),
-              PlayerListItem(
-                name: game.playerNames[entry.index],
-                score: isBench ? null : game.getPlayerScore(entry.index),
-                primaryCastleDirection: isBench
-                    ? null
-                    : game.getPlayerPrimaryCastleDirection(entry.index),
-                isWinner: winningPlayer == entry.index,
-                isBench: isBench,
-                onRename: () => widget.renamePlayerCallback(entry.index),
-                onDelete: isBench && widget.deletePlayerCallback != null
-                    ? () => widget.deletePlayerCallback!(entry.index)
-                    : null,
-              ),
-            ],
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      height: 12,
+      child: Center(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white54,
+            borderRadius: BorderRadius.all(Radius.circular(2)),
           ),
-        );
-      },
+          child: SizedBox(width: 40, height: 4),
+        ),
+      ),
     );
   }
 }

@@ -238,16 +238,16 @@ class TokenTileGrid {
       }
       final positions = tile.scoringPositions;
       if (positions.contains(ScoringPosition.Below)) {
-        return '+$per per room below';
+        return '+$per per room';
       }
       if (positions.contains(ScoringPosition.Above)) {
-        return '+$per per room above';
+        return '+$per per room';
       }
       if (positions.length >= 4) {
         final condition = tile.scoringCondition == ScoringCondition.Any
             ? 'room'
             : humanizeCamelCase(_enumLabel(tile.scoringCondition));
-        return '+$per per surrounding $condition';
+        return '+$per per $condition';
       }
       if (per != 0) return '+$per';
       return '';

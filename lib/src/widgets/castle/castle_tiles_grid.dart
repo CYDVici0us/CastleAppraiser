@@ -43,7 +43,10 @@ class CastleTilesGrid extends StatelessWidget {
 
     for (int i = 0; i < castleTiles.items.length; i++) {
       if (i%castleTiles.width == 0 && i != 0) {
-        columnChildren.add(Row(children: widgetList));
+        columnChildren.add(Row(
+          mainAxisSize: MainAxisSize.min,
+          children: widgetList,
+        ));
         widgetList = [];
       }
 
@@ -71,10 +74,15 @@ class CastleTilesGrid extends StatelessWidget {
       }
     }
 
-    columnChildren.add(Row(children:widgetList));
+    columnChildren.add(Row(
+      mainAxisSize: MainAxisSize.min,
+      children: widgetList,
+    ));
 
     return Column(
-      children: columnChildren
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: columnChildren,
     );
   }
 

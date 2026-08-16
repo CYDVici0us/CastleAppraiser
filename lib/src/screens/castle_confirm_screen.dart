@@ -35,10 +35,17 @@ class CastleConfirmScreen extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: FlowBreadcrumb(
-        segments: [gameTitle ?? 'Game', 'Confirm'],
-        onFirstSegmentTap: () {
+        showHome: true,
+        onHomeTap: () {
           OrientationHelper.lockPortrait();
-          Navigator.of(context).pop();
+          NavigationHelper.popToHome(context);
+        },
+        segments: [gameTitle ?? 'Game', 'Confirm'],
+        onSegmentTap: (index) {
+          if (index == 0) {
+            OrientationHelper.lockPortrait();
+            Navigator.of(context).pop();
+          }
         },
       ),
     ),

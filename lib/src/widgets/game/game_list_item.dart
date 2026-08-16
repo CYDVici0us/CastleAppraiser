@@ -9,7 +9,6 @@ import 'package:flutter/material.dart';
 
 import '../async_confirmation_dialog.dart';
 
-
 class GameListItem extends StatelessWidget {
   final Game game;
   final DeleteGameCallback deleteCallback;
@@ -19,46 +18,65 @@ class GameListItem extends StatelessWidget {
     required this.deleteCallback,
   });
 
-  _onLongPress(BuildContext context) {
+  void _onLongPress(BuildContext context) {
     showDialog(
       context: context,
       builder: (_) => AsyncConfirmationDialog(
-        confirmationText: 'Are you sure you want to delete this game (and all castles with it)?',
+        confirmationText:
+            'Are you sure you want to delete this game (and all castles with it)?',
         progressText: 'Deleting game...',
         onPressedYes: () async {
           await deleteCallback(game);
           return 'Successfully deleted game!';
         },
-      )
+      ),
     );
   }
 
-  _getFlexibleCastleView(BuildContext context, Castle castle) => Flexible(
-    child: Column(
-      children: [
-        Text(castle.hiveCastle?.title ?? castle.title),
-        Text(castle.getScore().toString()),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final grid = castle.castleTiles;
-            final scale = constraints.maxWidth /
-                (grid.width * TileWidget.defaultTileWidthHeight);
-            return CastleTilesGrid(
-              grid,
-              scaleWithScreen: false,
-              scalePercentScreenWidth: 0,
-              scale: scale.clamp(0.12, 1.0),
-            );
-          },
+  Widget _getFlexibleCastleView(Castle castle) => Flexible(
+        child: Column(
+          children: [
+            Text(
+              castle.hiveCastle?.title ?? castle.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
+            Text(castle.getScore().toString()),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final grid = castle.castleTiles;
+                  const tile = TileWidget.defaultTileWidthHeight;
+                  final naturalW = grid.width * tile;
+                  final naturalH = grid.height * tile;
+                  if (naturalW <= 0 || naturalH <= 0) {
+                    return const SizedBox.shrink();
+                  }
+                  var scale = constraints.maxWidth / naturalW;
+                  final scaleH = constraints.maxHeight / naturalH;
+                  if (scaleH < scale) scale = scaleH;
+                  scale = scale.clamp(0.08, 1.0);
+                  return ClipRect(
+                    child: Center(
+                      child: CastleTilesGrid(
+                        grid,
+                        scaleWithScreen: false,
+                        scalePercentScreenWidth: 0,
+                        scale: scale,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
-      ],
-    ),
-  );
+      );
 
   @override
   Widget build(BuildContext context) {
-
-    var pair = game.getWinningCastle();
+    final pair = game.getWinningCastle();
     final winningPlayerIndex = game.getWinningPlayerIndex();
     final winningPlayerName = winningPlayerIndex == null
         ? null
@@ -66,72 +84,78 @@ class GameListItem extends StatelessWidget {
             ? game.playerNames[winningPlayerIndex]
             : null);
 
-    List<Widget> children = [
-      Text(
-        game.title,
-        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-      ),
-      Text(
-        StringHelper.getMonthDayYear(game.hiveGame.created!),
-        style: const TextStyle(fontSize: 12, color: Colors.white70),
-      ),
-      Container(height:10),
-    ];
-
-    if (winningPlayerName != null) {
-      children.add(Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.emoji_events, color: Colors.green, size: 20),
-            const SizedBox(width: 6),
-            Text(
-              'Winner: $winningPlayerName',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ],
-        ),
-      ));
-    }
-
-    if (pair != null) {
-      var left = pair.key;
-      var right = pair.value;
-
-      children.add(Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _getFlexibleCastleView(context, left),
-          Container(width:10),
-          _getFlexibleCastleView(context, right),
-        ],
-      ));
-    }
-    else {
-      children.addAll([
-        Text('Not enough castles to determine a winner'),
-        Container(height: 50),
-      ]);
-    }
-
     return Material(
       elevation: 8.0,
       borderRadius: BorderRadius.circular(20.0),
       color: AppColors.card,
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => NavigationHelper.goToGameEditScreen(context,
+        onTap: () => NavigationHelper.goToGameEditScreen(
+          context,
           game: game,
         ),
         onLongPress: () => _onLongPress(context),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
-            children: children,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                game.title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+              Text(
+                StringHelper.getMonthDayYear(game.hiveGame.created!),
+                style: const TextStyle(fontSize: 12, color: Colors.white70),
+                textAlign: TextAlign.center,
+              ),
+              if (winningPlayerName != null) ...[
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.emoji_events,
+                        color: Colors.green, size: 18),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        'Winner: $winningPlayerName',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 8),
+              Expanded(
+                child: pair != null
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _getFlexibleCastleView(pair.key),
+                          const SizedBox(width: 10),
+                          _getFlexibleCastleView(pair.value),
+                        ],
+                      )
+                    : const Center(
+                        child: Text(
+                          'Not enough castles to determine a winner',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+              ),
+            ],
           ),
         ),
-      )
+      ),
     );
   }
-
 }

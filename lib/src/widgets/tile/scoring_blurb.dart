@@ -1,5 +1,6 @@
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/utils/token_tile_grid.dart';
+import 'package:btcc/src/widgets/tile/scoring_placement_grid.dart';
 import 'package:btcc/src/widgets/tile/tile_type_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -57,8 +58,14 @@ String _conditionLabel(ScoringCondition c) =>
 class _ScoringRun {
   final String text;
   final TileType? category;
+  /// Start a new visual line before this run (activity dual scoring).
+  final bool lineBreakBefore;
 
-  const _ScoringRun(this.text, {this.category});
+  const _ScoringRun(
+    this.text, {
+    this.category,
+    this.lineBreakBefore = false,
+  });
 }
 
 /// Scoring description with inline category icons (picker + details).
@@ -69,19 +76,32 @@ class ScoringBlurb extends StatelessWidget {
   final double iconScale;
   /// When false, ornament text (Torch/Mirror/…) is omitted from the blurb.
   final bool includeDecoration;
+  /// When false, stays on one line (use with [ScoringDetailsRow.shrinkToFit]).
+  final bool softWrap;
 
   const ScoringBlurb({
     super.key,
     required this.tile,
     this.style,
     this.textAlign = TextAlign.start,
-    this.iconScale = 0.28,
+    this.iconScale = 0.18,
     this.includeDecoration = true,
+    this.softWrap = true,
   });
 
   /// Whether this tile has any scoring blurb to show.
   static bool hasContent(Tile tile, {bool includeDecoration = true}) =>
       _runsFor(tile, includeDecoration: includeDecoration).isNotEmpty;
+
+  /// Flattened run text for tests / diagnostics.
+  @visibleForTesting
+  static List<String> runsTextFor(
+    Tile tile, {
+    bool includeDecoration = true,
+  }) =>
+      _runsFor(tile, includeDecoration: includeDecoration)
+          .map((r) => r.text)
+          .toList();
 
   static List<_ScoringRun> _runsFor(
     Tile tile, {
@@ -95,6 +115,9 @@ class ScoringBlurb extends StatelessWidget {
     if (tile.isThroneRoom()) {
       return _throneRuns(tile);
     }
+    if (tile.scoringCondition == ScoringCondition.SleepingRoom) {
+      return _sleepingRuns(tile, includeDecoration: includeDecoration);
+    }
     if (tile.isRoyalAttendant()) {
       return _attendantRuns(tile);
     }
@@ -104,7 +127,60 @@ class ScoringBlurb extends StatelessWidget {
     if (tile.tileType == TileType.Special) {
       return _specialRuns(tile);
     }
+    if (tile.tileType == TileType.Activity) {
+      return _activityRuns(tile, includeDecoration: includeDecoration);
+    }
     return _standardRuns(tile, includeDecoration: includeDecoration);
+  }
+
+  /// Activity: adjacency first, then specialty (unwanted category) override.
+  static List<_ScoringRun> _activityRuns(
+    Tile tile, {
+    bool includeDecoration = true,
+  }) {
+    final runs = <_ScoringRun>[
+      _ScoringRun('+${tile.scorePer} per room'),
+    ];
+
+    if (tile.scoringCondition != ScoringCondition.None) {
+      final cat = tileTypeForScoringCondition(tile.scoringCondition);
+      final label = _conditionLabel(tile.scoringCondition);
+      runs.add(_ScoringRun(
+        '+${tile.scorePer} if ',
+        lineBreakBefore: true,
+      ));
+      // Position is shown by the placement grid.
+      runs.add(_ScoringRun(label, category: cat));
+    }
+
+    if (includeDecoration && tile.decorationType != DecorationType.None) {
+      runs.add(const _ScoringRun(' · '));
+      runs.add(_ScoringRun(
+        TokenTileGrid.humanizeCamelCase(_enumLabel(tile.decorationType)),
+      ));
+    }
+
+    return runs;
+  }
+
+  /// Sleeping: +4 with ≥6 regular room types in the castle, else +1.
+  static List<_ScoringRun> _sleepingRuns(
+    Tile tile, {
+    bool includeDecoration = true,
+  }) {
+    final runs = <_ScoringRun>[
+      const _ScoringRun('+4 if ≥6 regular room types'),
+      const _ScoringRun('+1 otherwise', lineBreakBefore: true),
+    ];
+
+    if (includeDecoration && tile.decorationType != DecorationType.None) {
+      runs.add(const _ScoringRun(' · '));
+      runs.add(_ScoringRun(
+        TokenTileGrid.humanizeCamelCase(_enumLabel(tile.decorationType)),
+      ));
+    }
+
+    return runs;
   }
 
   static List<_ScoringRun> _throneRuns(Tile tile) {
@@ -155,19 +231,19 @@ class ScoringBlurb extends StatelessWidget {
     }
     final positions = tile.scoringPositions;
     if (positions.contains(ScoringPosition.Below)) {
-      return [_ScoringRun('+$per per room below')];
+      return [_ScoringRun('+$per per room')];
     }
     if (positions.contains(ScoringPosition.Above)) {
-      return [_ScoringRun('+$per per room above')];
+      return [_ScoringRun('+$per per room')];
     }
     if (positions.length >= 4) {
       if (tile.scoringCondition == ScoringCondition.Any) {
-        return [_ScoringRun('+$per per surrounding room')];
+        return [_ScoringRun('+$per per room')];
       }
       final cat = tileTypeForScoringCondition(tile.scoringCondition);
       final label = _conditionLabel(tile.scoringCondition);
       return [
-        _ScoringRun('+$per per surrounding '),
+        _ScoringRun('+$per per '),
         _ScoringRun(label, category: cat),
       ];
     }
@@ -257,13 +333,8 @@ class ScoringBlurb extends StatelessWidget {
           where = ' in castle';
         } else if (positions.contains(ScoringPosition.Neighbor)) {
           where = ' in neighboring castles';
-        } else if (positions.contains(ScoringPosition.Above)) {
-          where = ' above';
-        } else if (positions.contains(ScoringPosition.Below)) {
-          where = ' below';
-        } else if (positions.length >= 4) {
-          where = ' surrounding';
         }
+        // above / below / surrounding: placement grid shows position.
         if (tile.scorePer != 0) {
           runs.add(_ScoringRun('+${tile.scorePer} per '));
           runs.add(_ScoringRun('$label$where', category: cat));
@@ -342,10 +413,10 @@ class ScoringBlurb extends StatelessWidget {
     return null;
   }
 
-  @override
-  Widget build(BuildContext context) {
+  /// One widget per visual scoring line (Activity dual-grid layout).
+  List<Widget> lineWidgets(BuildContext context) {
     final runs = _runsFor(tile, includeDecoration: includeDecoration);
-    if (runs.isEmpty) return const SizedBox.shrink();
+    if (runs.isEmpty) return const [];
 
     final effectiveStyle = style ??
         Theme.of(context).textTheme.bodyLarge?.copyWith(
@@ -355,23 +426,256 @@ class ScoringBlurb extends StatelessWidget {
                   .withValues(alpha: 0.72),
             );
 
-    final children = <Widget>[];
+    final lines = <List<_ScoringRun>>[];
+    var current = <_ScoringRun>[];
     for (final run in runs) {
-      if (run.category != null && _hasCategoryImage(run.category!)) {
-        children.add(TileTypeWidget(run.category!, scale: iconScale));
-        children.add(SizedBox(width: 6 * iconScale / 0.28));
+      if (run.lineBreakBefore && current.isNotEmpty) {
+        lines.add(current);
+        current = <_ScoringRun>[];
       }
-      if (run.text.isNotEmpty) {
-        children.add(Text(run.text, style: effectiveStyle));
+      current.add(run);
+    }
+    if (current.isNotEmpty) lines.add(current);
+
+    return [
+      for (final lineRuns in lines) _wrapLine(lineRuns, effectiveStyle),
+    ];
+  }
+
+  Widget _wrapLine(List<_ScoringRun> lineRuns, TextStyle? effectiveStyle) {
+    // Text.rich keeps intrinsic width (unlike Wrap), so score+grid can stay
+    // on one line and only wrap when the container is actually too narrow.
+    return Text.rich(
+      TextSpan(
+        style: effectiveStyle,
+        children: [
+          for (final run in lineRuns) ...[
+            if (run.category != null && _hasCategoryImage(run.category!))
+              WidgetSpan(
+                alignment: PlaceholderAlignment.middle,
+                child: Padding(
+                  padding: EdgeInsets.only(right: 4 * iconScale / 0.18),
+                  child: TileTypeWidget(run.category!, scale: iconScale),
+                ),
+              ),
+            if (run.text.isNotEmpty) TextSpan(text: run.text),
+          ],
+        ],
+      ),
+      textAlign: textAlign,
+      softWrap: softWrap,
+      maxLines: softWrap ? null : 1,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = lineWidgets(context);
+    if (lines.isEmpty) return const SizedBox.shrink();
+    if (lines.length == 1) return lines.first;
+
+    final showOrBetween = tile.tileType == TileType.Activity;
+    final orStyle = (style ??
+            Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.72),
+                ))
+        ?.copyWith(
+      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55),
+      fontWeight: FontWeight.w600,
+      fontSize: (style?.fontSize ??
+              Theme.of(context).textTheme.bodyLarge?.fontSize ??
+              14) *
+          0.9,
+    );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: textAlign == TextAlign.center
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < lines.length; i++) ...[
+          if (i > 0) ...[
+            if (showOrBetween) ...[
+              const SizedBox(height: 2),
+              Align(
+                alignment: Alignment.center,
+                child: Text('or', style: orStyle, textAlign: TextAlign.center),
+              ),
+              const SizedBox(height: 2),
+            ] else
+              const SizedBox(height: 4),
+          ],
+          lines[i],
+        ],
+      ],
+    );
+  }
+}
+
+/// Score blurb with the placement grid flush to the right (when both apply).
+class ScoringDetailsRow extends StatelessWidget {
+  final Tile tile;
+  final TextStyle? style;
+  final TextAlign textAlign;
+  final double iconScale;
+  final bool includeDecoration;
+  final double gridCellSize;
+  /// Scale the score+grid down instead of wrapping when space is tight.
+  final bool shrinkToFit;
+
+  const ScoringDetailsRow({
+    super.key,
+    required this.tile,
+    this.style,
+    this.textAlign = TextAlign.start,
+    this.iconScale = 0.18,
+    this.includeDecoration = true,
+    this.gridCellSize = 16,
+    this.shrinkToFit = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final showScoring =
+        ScoringBlurb.hasContent(tile, includeDecoration: includeDecoration);
+    final showGrid = ScoringPlacementMapping.shouldShow(tile);
+
+    if (!showScoring && !showGrid) return const SizedBox.shrink();
+
+    final Widget content;
+    // Activity: each scoring line gets its own grid (stacked, not side-by-side).
+    if (tile.tileType == TileType.Activity && showGrid) {
+      content = _activityDetails(context, showScoring: showScoring);
+    } else {
+      final blurb = showScoring
+          ? ScoringBlurb(
+              tile: tile,
+              style: style,
+              textAlign: textAlign == TextAlign.center
+                  ? TextAlign.start
+                  : textAlign,
+              iconScale: iconScale,
+              includeDecoration: includeDecoration,
+              softWrap: !shrinkToFit,
+            )
+          : null;
+      final grid = showGrid
+          ? ScoringPlacementGrid.diagramForTile(tile, cellSize: gridCellSize)
+          : null;
+
+      if (blurb == null) {
+        content = Align(
+          alignment: textAlign == TextAlign.center
+              ? Alignment.center
+              : Alignment.centerRight,
+          child: grid!,
+        );
+      } else if (grid == null) {
+        content = blurb;
+      } else if (shrinkToFit) {
+        // Intrinsic one-line width; FittedBox scales the whole row down.
+        content = Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            blurb,
+            const SizedBox(width: 10),
+            grid,
+          ],
+        );
+      } else {
+        // Prefer a single line; wrap only when the container is too narrow.
+        content = Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Flexible(child: blurb),
+            const SizedBox(width: 10),
+            grid,
+          ],
+        );
       }
     }
 
-    return Wrap(
-      crossAxisAlignment: WrapCrossAlignment.center,
-      alignment: textAlign == TextAlign.center
-          ? WrapAlignment.center
-          : WrapAlignment.start,
-      children: children,
+    if (!shrinkToFit) return content;
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.center,
+      child: content,
+    );
+  }
+
+  /// `+N per room` + cardinal grid, then `+N if Category` + surrounding grid.
+  Widget _activityDetails(BuildContext context, {required bool showScoring}) {
+    final size = gridCellSize;
+    final grids = <Widget>[
+      ScoringPlacementGrid.standard(
+        positions: ScoringPlacementMapping.activityCardinalPositions,
+        cellSize: size,
+      ),
+      if (tile.scoringCondition != ScoringCondition.None)
+        ScoringPlacementGrid.standard(
+          positions: ScoringPlacementMapping.activitySurroundingPositions,
+          cellSize: size,
+        ),
+    ];
+
+    if (!showScoring) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          for (var i = 0; i < grids.length; i++) ...[
+            if (i > 0) const SizedBox(height: 4),
+            grids[i],
+          ],
+        ],
+      );
+    }
+
+    final lines = ScoringBlurb(
+      tile: tile,
+      style: style,
+      textAlign: TextAlign.start,
+      iconScale: iconScale,
+      includeDecoration: includeDecoration,
+      softWrap: !shrinkToFit,
+    ).lineWidgets(context);
+
+    final rowCount = lines.length > grids.length ? lines.length : grids.length;
+    final orStyle = (style ?? Theme.of(context).textTheme.bodyMedium)?.copyWith(
+      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55),
+      fontWeight: FontWeight.w600,
+      fontSize: (style?.fontSize ?? 14) * 0.9,
+    );
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        for (var i = 0; i < rowCount; i++) ...[
+          if (i > 0) ...[
+            const SizedBox(height: 2),
+            Text('or', style: orStyle, textAlign: TextAlign.center),
+            const SizedBox(height: 2),
+          ],
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (i < lines.length)
+                shrinkToFit ? lines[i] : Flexible(child: lines[i]),
+              if (i < grids.length) ...[
+                const SizedBox(width: 10),
+                grids[i],
+              ],
+            ],
+          ),
+        ],
+      ],
     );
   }
 }

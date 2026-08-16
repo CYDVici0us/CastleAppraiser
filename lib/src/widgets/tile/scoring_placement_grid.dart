@@ -35,10 +35,34 @@ class ScoringPlacementMapping {
     ScoringPosition.W,
   };
 
+  /// Orthogonal neighbors for Activity adjacency scoring.
+  static const activityCardinalPositions = [
+    ScoringPosition.N,
+    ScoringPosition.E,
+    ScoringPosition.S,
+    ScoringPosition.W,
+  ];
+
+  /// All eight neighbors for Activity specialty (unwanted type) check.
+  static const activitySurroundingPositions = [
+    ScoringPosition.NW,
+    ScoringPosition.N,
+    ScoringPosition.NE,
+    ScoringPosition.E,
+    ScoringPosition.SE,
+    ScoringPosition.S,
+    ScoringPosition.SW,
+    ScoringPosition.W,
+  ];
+
   /// Whether a placement diagram should be shown for [tile].
   static bool shouldShow(Tile tile) {
     if (tile.isEmpty() || tile.isPlaceholder()) return false;
     if (tile.isBonusCard() || tile.isRoyalAttendant()) return false;
+    // Activity: two fixed diagrams (cardinal + surrounding).
+    if (tile.tileType == TileType.Activity) return true;
+    // Sleeping: 2×3 regular room-type color grid.
+    if (tile.scoringCondition == ScoringCondition.SleepingRoom) return true;
     // Secrets always use their printed copy-direction arrow (never a duplicate).
     if (tile.isSecret()) {
       return secretArrow(tile.baseScoringPositions) != PlacementArrow.none;
@@ -259,6 +283,33 @@ class ScoringPlacementGrid extends StatelessWidget {
     );
   }
 
+  /// Single grid, or Activity's stacked dual grids (adjacency then specialty).
+  static Widget diagramForTile(Tile tile, {double? cellSize}) {
+    if (tile.scoringCondition == ScoringCondition.SleepingRoom) {
+      return SleepingTypesGrid(cellSize: cellSize ?? 16.0);
+    }
+    if (tile.tileType == TileType.Activity) {
+      // Prefer ScoringDetailsRow, which pairs each grid with its score line.
+      // Fallback: stack adjacency then specialty (not side-by-side).
+      final size = cellSize ?? 18.0;
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ScoringPlacementGrid.standard(
+            positions: ScoringPlacementMapping.activityCardinalPositions,
+            cellSize: size,
+          ),
+          SizedBox(height: size * 0.35),
+          ScoringPlacementGrid.standard(
+            positions: ScoringPlacementMapping.activitySurroundingPositions,
+            cellSize: size,
+          ),
+        ],
+      );
+    }
+    return ScoringPlacementGrid.forTile(tile, cellSize: cellSize);
+  }
+
   @override
   Widget build(BuildContext context) {
     final isVerticalAboveBelow =
@@ -314,8 +365,28 @@ class ScoringPlacementGrid extends StatelessWidget {
     }
 
     final rows = (cells.length / columns).ceil();
-    final width = columns * cellSize + (columns - 1) * gap;
-    final height = rows * cellSize + (rows - 1) * gap;
+
+    // Crop empty margins so the diagram sits flush next to score text
+    // (throne 3×4 often has unused side columns that look like misalignment).
+    var minCol = columns;
+    var maxCol = -1;
+    var minRow = rows;
+    var maxRow = -1;
+    for (var i = 0; i < cells.length; i++) {
+      if (cells[i] == PlacementCellKind.empty) continue;
+      final c = i % columns;
+      final r = i ~/ columns;
+      if (c < minCol) minCol = c;
+      if (c > maxCol) maxCol = c;
+      if (r < minRow) minRow = r;
+      if (r > maxRow) maxRow = r;
+    }
+    if (maxCol < 0) return const SizedBox.shrink();
+
+    final cropCols = maxCol - minCol + 1;
+    final cropRows = maxRow - minRow + 1;
+    final width = cropCols * cellSize + (cropCols - 1) * gap;
+    final height = cropRows * cellSize + (cropRows - 1) * gap;
 
     Widget grid = SizedBox(
       width: width,
@@ -325,8 +396,8 @@ class ScoringPlacementGrid extends StatelessWidget {
           for (var i = 0; i < cells.length; i++)
             if (cells[i] != PlacementCellKind.empty)
               Positioned(
-                left: (i % columns) * (cellSize + gap),
-                top: (i ~/ columns) * (cellSize + gap),
+                left: ((i % columns) - minCol) * (cellSize + gap),
+                top: ((i ~/ columns) - minRow) * (cellSize + gap),
                 width: cellSize,
                 height: cellSize,
                 child: _cell(cells[i]),
@@ -397,6 +468,58 @@ class ScoringPlacementGrid extends StatelessWidget {
           width: 1,
         ),
       ),
+    );
+  }
+}
+
+/// 2×3 color grid of the six regular room types for Sleeping scoring.
+/// Row 1: orange, yellow, blue · Row 2: purple, grey, green.
+class SleepingTypesGrid extends StatelessWidget {
+  final double cellSize;
+
+  const SleepingTypesGrid({super.key, this.cellSize = 16});
+
+  static const _colors = [
+    Color(0xFFE67E22), // orange — Food
+    Color(0xFFF1C40F), // yellow — Living
+    Color(0xFF3498DB), // blue — Utility
+    Color(0xFF9B59B6), // purple — Sleeping
+    Color(0xFF95A5A6), // grey — Corridor
+    Color(0xFF27AE60), // green — Outdoor
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    const gap = 3.0;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var row = 0; row < 2; row++) ...[
+          if (row > 0) const SizedBox(height: gap),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var col = 0; col < 3; col++) ...[
+                if (col > 0) const SizedBox(width: gap),
+                SizedBox(
+                  width: cellSize,
+                  height: cellSize,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: _colors[row * 3 + col],
+                      borderRadius: BorderRadius.circular(3),
+                      border: Border.all(
+                        color: const Color(0xFFE0E0E0),
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ],
     );
   }
 }

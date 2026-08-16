@@ -26,6 +26,8 @@ class ExpandableGridMapView<T extends Object> extends StatefulWidget {
   final ExpandCollapseCallback<T> onExpandCollapse;
   final DragItemCallback? onTapItem;
   final int? selectedIndex;
+  /// When nothing is selected, center the map on this index (e.g. throne).
+  final int? initialCenterIndex;
 
   ExpandableGridMapView({
     required this.gridList,
@@ -44,6 +46,7 @@ class ExpandableGridMapView<T extends Object> extends StatefulWidget {
     this.replaceWithEmptyOnDragStart=true,
     this.onTapItem,
     this.selectedIndex,
+    this.initialCenterIndex,
   });
 
   @override
@@ -61,9 +64,23 @@ class _ExpandableGridMapViewState<T extends Object> extends State<ExpandableGrid
 
   Size? _viewportSize;
   int? _pendingCenterIndex;
+  bool _didInitialCenter = false;
 
   double get _minScale =>
       Platform.isWindows ? .3 : 1 / widget.gridList.maxDimension;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialCenterIndex;
+    if (initial != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _didInitialCenter) return;
+        _centerOnIndex(initial);
+        _didInitialCenter = true;
+      });
+    }
+  }
 
   @override
   void didUpdateWidget(ExpandableGridMapView<T> oldWidget) {
@@ -226,13 +243,16 @@ class _ExpandableGridMapViewState<T extends Object> extends State<ExpandableGrid
         final previous = _viewportSize;
         _viewportSize = nextSize;
         if (sizeChanged) {
-          final selected = widget.selectedIndex;
-          if (selected != null) {
+          final focus = widget.selectedIndex ??
+              (!_didInitialCenter ? widget.initialCenterIndex : null);
+          if (focus != null) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted || widget.selectedIndex != selected) return;
-              // First layout or viewport shrink (edit panel) — keep selection centered.
+              if (!mounted) return;
               if (previous == null || previous != nextSize) {
-                _centerOnIndex(selected);
+                _centerOnIndex(focus);
+                if (widget.selectedIndex == null) {
+                  _didInitialCenter = true;
+                }
               }
             });
           }
