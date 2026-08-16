@@ -338,6 +338,7 @@ void main() {
           t,
           requireSupport: false,
         ),
+        getEmpty: () => Empty(),
       );
       expect(result, OrthogonalMoveResult.relocated);
       expect(grid.items[9].id, TileId.Dungeon);
@@ -350,22 +351,96 @@ void main() {
       );
     });
 
-    test('moving up from below does not push ground tile below', () {
-      // Col 2: empty above, Kitchen on ground, Living wrongly below.
-      // Moving Living up must not slide Kitchen below ground.
-      final living = BrandyRoom(); // Living room
+    test('moving up from below pushes occupied ground tile up', () {
+      // Col 2: empty above, Kitchen on ground, Activity wrongly below.
+      // Dropping Activity on Kitchen must push Kitchen upward.
+      final activity = EscapeRoomActivity();
+      final grid = GridList<Tile>(3, [
+        Empty(), Empty(), Empty(),
+        Empty(), Empty(), Empty(),
+        ThroneRoomPerCorridorFood(), Placeholder(), Kitchen(),
+        Empty(), Empty(), activity,
+      ]);
+      grid.items[11] = Empty(); // clear source
+      expect(
+        TilePlacement.canRotateSegment(grid, 11, 8),
+        isFalse,
+        reason: 'must not rotate across ground (would push Kitchen below)',
+      );
+      expect(TilePlacement.canInsertPushUpward(grid, 11, 8), isTrue);
+      final result = TilePlacement.tryOrthogonallyRelocate(
+        grid,
+        11,
+        8,
+        activity,
+        canAddAt: (i) => grid.items[i].isEmpty(),
+        canPlaceTile: (i, t) => TilePlacement.canPlaceTile(
+          grid,
+          i,
+          t,
+          requireSupport: false,
+        ),
+        getEmpty: () => Empty(),
+      );
+      expect(result, OrthogonalMoveResult.pushed);
+      expect(grid.items[8].id, activity.id);
+      expect(grid.items[5].id, TileId.Kitchen);
+      TilePlacement.compactTowardGround(grid, getEmpty: () => Empty());
+      final ground = TilePlacement.groundRow(grid)!;
+      for (int i = 0; i < grid.items.length; i++) {
+        if (grid.items[i].id != TileId.Kitchen) continue;
+        final y = i ~/ grid.width;
+        expect(y < ground, isTrue,
+            reason: 'Kitchen should sit above ground after push-up');
+      }
+      expect(
+        TilePlacement.levelRelativeToGround(
+          grid,
+          grid.items.indexWhere((t) => t.id == activity.id),
+        ),
+        isNot(CastleLevel.below),
+      );
+    });
+
+    test('moving up from below onto full column expands and pushes stack', () {
+      final activity = EscapeRoomActivity();
+      final living = BrandyRoom();
+      final grid = GridList<Tile>(3, [
+        Empty(), Empty(), living,
+        ThroneRoomPerCorridorFood(), Placeholder(), Kitchen(),
+        Empty(), Empty(), activity,
+      ]);
+      grid.items[8] = Empty();
+      final result = TilePlacement.tryOrthogonallyRelocate(
+        grid,
+        8,
+        5,
+        activity,
+        canAddAt: (i) => grid.items[i].isEmpty(),
+        canPlaceTile: (i, t) => TilePlacement.canPlaceTile(
+          grid,
+          i,
+          t,
+          requireSupport: false,
+        ),
+        getEmpty: () => Empty(),
+      );
+      expect(result, OrthogonalMoveResult.pushed);
+      expect(grid.height, 4);
+      expect(grid.items[2].id, living.id);
+      expect(grid.items[5].id, TileId.Kitchen);
+      expect(grid.items[8].id, activity.id);
+    });
+
+    test('moving up from below onto empty higher cell still relocates', () {
+      final living = BrandyRoom();
       final grid = GridList<Tile>(3, [
         Empty(), Empty(), Empty(),
         Empty(), Empty(), Empty(),
         ThroneRoomPerCorridorFood(), Placeholder(), Kitchen(),
         Empty(), Empty(), living,
       ]);
-      grid.items[11] = Empty(); // clear source
-      expect(
-        TilePlacement.canRotateSegment(grid, 11, 2),
-        isFalse,
-        reason: 'must not rotate across ground (would push Kitchen below)',
-      );
+      grid.items[11] = Empty();
       final result = TilePlacement.tryOrthogonallyRelocate(
         grid,
         11,
@@ -378,6 +453,7 @@ void main() {
           t,
           requireSupport: false,
         ),
+        getEmpty: () => Empty(),
       );
       expect(result, OrthogonalMoveResult.relocated);
       expect(grid.items[2].id, living.id);
@@ -390,6 +466,204 @@ void main() {
         expect(y <= ground, isTrue,
             reason: 'Kitchen must not end up below ground');
       }
+    });
+
+    test('moving down from above rejects downstairs onto ground', () {
+      final dungeon = Dungeon();
+      final grid = GridList<Tile>(3, [
+        Empty(), Empty(), Empty(),
+        Empty(), Empty(), dungeon,
+        ThroneRoomPerCorridorFood(), Placeholder(), Kitchen(),
+        Empty(), Empty(), Empty(),
+      ]);
+      grid.items[5] = Empty();
+      expect(TilePlacement.canInsertPushDownward(grid, 5, 8), isTrue);
+      expect(
+        TilePlacement.canOrthogonallyRelocate(
+          grid,
+          5,
+          8,
+          dungeon,
+          canAddAt: (i) => grid.items[i].isEmpty(),
+          canPlaceTile: (i, t) => TilePlacement.canPlaceTile(
+            grid,
+            i,
+            t,
+            requireSupport: false,
+          ),
+        ),
+        isFalse,
+        reason: 'Downstairs cannot land on ground',
+      );
+    });
+
+    test('moving down from above onto below pushes stack down', () {
+      final dungeon = Dungeon();
+      final other = Hideout();
+      final grid = GridList<Tile>(3, [
+        Empty(), Empty(), Empty(),
+        Empty(), Empty(), dungeon,
+        ThroneRoomPerCorridorFood(), Placeholder(), Empty(),
+        Empty(), Empty(), other,
+      ]);
+      grid.items[5] = Empty();
+      expect(TilePlacement.canInsertPushDownward(grid, 5, 11), isTrue);
+      final result = TilePlacement.tryOrthogonallyRelocate(
+        grid,
+        5,
+        11,
+        dungeon,
+        canAddAt: (i) => grid.items[i].isEmpty(),
+        canPlaceTile: (i, t) => TilePlacement.canPlaceTile(
+          grid,
+          i,
+          t,
+          requireSupport: false,
+        ),
+        getEmpty: () => Empty(),
+      );
+      expect(result, OrthogonalMoveResult.pushed);
+      expect(grid.items[11].id, dungeon.id);
+      expect(grid.items[14].id, other.id); // pushed down (grid grew)
+      expect(grid.height, 5);
+    });
+
+    test('moving down from above onto ground corridor pushes kitchen down', () {
+      // Corridor may sit on ground; dropping it on Kitchen pushes Kitchen below.
+      final corridor = ThroughTheWardrobe();
+      final grid = GridList<Tile>(3, [
+        Empty(), Empty(), Empty(),
+        Empty(), Empty(), corridor,
+        ThroneRoomPerCorridorFood(), Placeholder(), Kitchen(),
+        Empty(), Empty(), Empty(),
+      ]);
+      grid.items[5] = Empty();
+      final result = TilePlacement.tryOrthogonallyRelocate(
+        grid,
+        5,
+        8,
+        corridor,
+        canAddAt: (i) => grid.items[i].isEmpty(),
+        canPlaceTile: (i, t) => TilePlacement.canPlaceTile(
+          grid,
+          i,
+          t,
+          requireSupport: false,
+        ),
+        getEmpty: () => Empty(),
+      );
+      expect(result, OrthogonalMoveResult.pushed);
+      expect(grid.items[8].id, corridor.id);
+      expect(grid.items[11].id, TileId.Kitchen);
+      final ground = TilePlacement.groundRow(grid)!;
+      expect(11 ~/ grid.width > ground, isTrue);
+    });
+
+    test('corridor on ground pushes upstairs tile up', () {
+      final corridor = ThroughTheWardrobe();
+      final grid = GridList<Tile>(3, [
+        Empty(), Empty(), Empty(),
+        Empty(), Empty(), Kitchen(),
+        ThroneRoomPerCorridorFood(), Placeholder(), corridor,
+        Empty(), Empty(), Empty(),
+      ]);
+      grid.items[8] = Empty();
+      expect(
+        TilePlacement.canInsertPushUpward(
+          grid,
+          8,
+          5,
+          movingTile: corridor,
+        ),
+        isTrue,
+      );
+      expect(
+        TilePlacement.canInsertPushUpward(grid, 8, 5),
+        isFalse,
+        reason: 'non-flexible tiles still require source below',
+      );
+      final result = TilePlacement.tryOrthogonallyRelocate(
+        grid,
+        8,
+        5,
+        corridor,
+        canAddAt: (i) => grid.items[i].isEmpty(),
+        canPlaceTile: (i, t) => TilePlacement.canPlaceTile(
+          grid,
+          i,
+          t,
+          requireSupport: false,
+        ),
+        getEmpty: () => Empty(),
+      );
+      expect(result, OrthogonalMoveResult.pushed);
+      expect(grid.items[5].id, corridor.id);
+      expect(grid.items[2].id, TileId.Kitchen);
+    });
+
+    test('secret on ground pushes downstairs tile down', () {
+      final secret = RideTheDumbWaiter();
+      final dungeon = Dungeon();
+      final grid = GridList<Tile>(3, [
+        Empty(), Empty(), Empty(),
+        Empty(), Empty(), Empty(),
+        ThroneRoomPerCorridorFood(), Placeholder(), secret,
+        Empty(), Empty(), dungeon,
+      ]);
+      grid.items[8] = Empty();
+      final result = TilePlacement.tryOrthogonallyRelocate(
+        grid,
+        8,
+        11,
+        secret,
+        canAddAt: (i) => grid.items[i].isEmpty(),
+        canPlaceTile: (i, t) => TilePlacement.canPlaceTile(
+          grid,
+          i,
+          t,
+          requireSupport: false,
+        ),
+        getEmpty: () => Empty(),
+      );
+      expect(result, OrthogonalMoveResult.pushed);
+      expect(grid.items[11].id, secret.id);
+      expect(grid.items[14].id, dungeon.id);
+      expect(grid.height, 5);
+    });
+
+    test('corridor past throne column does not move throne', () {
+      // Throne column: corridor above, dungeon below. Move corridor onto dungeon.
+      final corridor = ThroughTheWardrobe();
+      final dungeon = Dungeon();
+      final grid = GridList<Tile>(3, [
+        Empty(), corridor, Empty(),
+        ThroneRoomPerCorridorFood(), Placeholder(), Empty(),
+        Empty(), dungeon, Empty(),
+      ]);
+      final throneIndex = 3;
+      grid.items[1] = Empty();
+      final result = TilePlacement.tryOrthogonallyRelocate(
+        grid,
+        1,
+        7,
+        corridor,
+        canAddAt: (i) => grid.items[i].isEmpty(),
+        canPlaceTile: (i, t) => TilePlacement.canPlaceTile(
+          grid,
+          i,
+          t,
+          requireSupport: false,
+        ),
+        getEmpty: () => Empty(),
+      );
+      expect(result, OrthogonalMoveResult.pushed);
+      expect(grid.items[throneIndex].tileType, TileType.ThroneRoom);
+      expect(
+        TilePlacement.levelRelativeToGround(grid, throneIndex),
+        CastleLevel.ground,
+      );
+      expect(grid.items[7].id, corridor.id);
+      expect(grid.items[10].id, dungeon.id);
     });
   });
 }

@@ -477,10 +477,199 @@ class TilePlacement {
     }
   }
 
-  /// Orthogonal move: prefer segment rotate; if blocked (e.g. throne in the
-  /// way), allow relocating into an empty legal cell so wrong-floor tiles can
-  /// cross the ground row. Caller should [compactTowardGround] after a
-  /// non-rotate relocate.
+  /// Corridor / Secret may sit on any floor, so they can insert-push across
+  /// ground from any source level (throne/placeholder never move).
+  static bool _isLevelFlexible(TileType type) =>
+      type == TileType.Corridor || type == TileType.Secret;
+
+  /// Geometry for inserting at [destIndex] while pushing that column upward.
+  ///
+  /// Restricted tiles: only from below onto ground/above.
+  /// Corridor/Secret ([movingTile]): any upward move in the column.
+  static bool canInsertPushUpward(
+    GridList<Tile> grid,
+    int sourceIndex,
+    int destIndex, {
+    Tile? movingTile,
+  }) {
+    if (sourceIndex == destIndex) return false;
+    if (sourceIndex < 0 ||
+        destIndex < 0 ||
+        sourceIndex >= grid.items.length ||
+        destIndex >= grid.items.length) {
+      return false;
+    }
+    if (!isSameColumn(grid, sourceIndex, destIndex)) return false;
+    if (sourceIndex <= destIndex) return false; // must move upward
+    if (_isImmovable(grid.items[destIndex])) return false;
+
+    final step = grid.width;
+    for (int i = destIndex - step; i >= 0; i -= step) {
+      if (_isImmovable(grid.items[i])) return false;
+    }
+
+    if (movingTile != null && _isLevelFlexible(movingTile.tileType)) {
+      return true;
+    }
+
+    final sourceLevel = levelRelativeToGround(grid, sourceIndex);
+    final destLevel = levelRelativeToGround(grid, destIndex);
+    if (sourceLevel != CastleLevel.below) return false;
+    if (destLevel != CastleLevel.ground && destLevel != CastleLevel.above) {
+      return false;
+    }
+    return true;
+  }
+
+  /// Geometry for inserting at [destIndex] while pushing that column downward.
+  ///
+  /// Restricted tiles: only from above onto ground/below.
+  /// Corridor/Secret ([movingTile]): any downward move in the column.
+  static bool canInsertPushDownward(
+    GridList<Tile> grid,
+    int sourceIndex,
+    int destIndex, {
+    Tile? movingTile,
+  }) {
+    if (sourceIndex == destIndex) return false;
+    if (sourceIndex < 0 ||
+        destIndex < 0 ||
+        sourceIndex >= grid.items.length ||
+        destIndex >= grid.items.length) {
+      return false;
+    }
+    if (!isSameColumn(grid, sourceIndex, destIndex)) return false;
+    if (sourceIndex >= destIndex) return false; // must move downward
+    if (_isImmovable(grid.items[destIndex])) return false;
+
+    final step = grid.width;
+    for (int i = destIndex + step; i < grid.items.length; i += step) {
+      if (_isImmovable(grid.items[i])) return false;
+    }
+
+    if (movingTile != null && _isLevelFlexible(movingTile.tileType)) {
+      return true;
+    }
+
+    final sourceLevel = levelRelativeToGround(grid, sourceIndex);
+    final destLevel = levelRelativeToGround(grid, destIndex);
+    if (sourceLevel != CastleLevel.above) return false;
+    if (destLevel != CastleLevel.ground && destLevel != CastleLevel.below) {
+      return false;
+    }
+    return true;
+  }
+
+  static bool canInsertPushAcrossGround(
+    GridList<Tile> grid,
+    int sourceIndex,
+    int destIndex, {
+    Tile? movingTile,
+  }) =>
+      canInsertPushUpward(
+        grid,
+        sourceIndex,
+        destIndex,
+        movingTile: movingTile,
+      ) ||
+      canInsertPushDownward(
+        grid,
+        sourceIndex,
+        destIndex,
+        movingTile: movingTile,
+      );
+
+  /// Inserts [tile] at [destIndex], shifting movable tiles in that column up
+  /// (toward lower indices). Prepends an empty row when the column is full.
+  /// Throne/placeholder cells are never moved.
+  ///
+  /// Mutates [grid.items] in place. Returns false if not allowed.
+  static bool insertPushUpward(
+    GridList<Tile> grid,
+    int sourceIndex,
+    int destIndex,
+    Tile tile, {
+    required Tile Function() getEmpty,
+  }) {
+    if (!canInsertPushUpward(
+      grid,
+      sourceIndex,
+      destIndex,
+      movingTile: tile,
+    )) {
+      return false;
+    }
+
+    var dest = destIndex;
+    final step = grid.width;
+    int? hole;
+    for (int i = dest - step; i >= 0; i -= step) {
+      if (grid.items[i].isEmpty()) {
+        hole = i;
+        break;
+      }
+    }
+
+    if (hole == null) {
+      final w = grid.width;
+      grid.items.insertAll(0, List<Tile>.generate(w, (_) => getEmpty()));
+      dest += w;
+      hole = dest % w; // top cell of this column
+    }
+
+    for (int i = hole; i < dest; i += step) {
+      grid.items[i] = grid.items[i + step];
+    }
+    grid.items[dest] = tile;
+    return true;
+  }
+
+  /// Inserts [tile] at [destIndex], shifting movable tiles in that column down
+  /// (toward higher indices). Appends an empty row when the column is full.
+  /// Throne/placeholder cells are never moved.
+  static bool insertPushDownward(
+    GridList<Tile> grid,
+    int sourceIndex,
+    int destIndex,
+    Tile tile, {
+    required Tile Function() getEmpty,
+  }) {
+    if (!canInsertPushDownward(
+      grid,
+      sourceIndex,
+      destIndex,
+      movingTile: tile,
+    )) {
+      return false;
+    }
+
+    final dest = destIndex;
+    final step = grid.width;
+    final w = grid.width;
+    int? hole;
+    for (int i = dest + step; i < grid.items.length; i += step) {
+      if (grid.items[i].isEmpty()) {
+        hole = i;
+        break;
+      }
+    }
+
+    if (hole == null) {
+      grid.items.addAll(List<Tile>.generate(w, (_) => getEmpty()));
+      hole = (grid.height - 1) * w + (dest % w);
+    }
+
+    for (int i = hole; i > dest; i -= step) {
+      grid.items[i] = grid.items[i - step];
+    }
+    grid.items[dest] = tile;
+    return true;
+  }
+
+  /// Orthogonal move: prefer segment rotate; else cross-ground insert+push;
+  /// else relocate into an empty legal cell. Caller should
+  /// [compactTowardGround] after [OrthogonalMoveResult.relocated] or
+  /// [OrthogonalMoveResult.pushed].
   static bool canOrthogonallyRelocate(
     GridList<Tile> grid,
     int sourceIndex,
@@ -492,14 +681,21 @@ class TilePlacement {
     if (sourceIndex == destIndex) return false;
     if (!isOrthogonal(grid, sourceIndex, destIndex)) return false;
     if (canRotateSegment(grid, sourceIndex, destIndex)) return true;
+    if (canInsertPushAcrossGround(
+          grid,
+          sourceIndex,
+          destIndex,
+          movingTile: tile,
+        ) &&
+        canPlaceTile(destIndex, tile)) {
+      return true;
+    }
     final dest = grid.items[destIndex];
     if (!dest.isEmpty()) return false;
     return canAddAt(destIndex) && canPlaceTile(destIndex, tile);
   }
 
-  /// Performs an orthogonal relocate. Returns [OrthogonalMoveResult.rotated]
-  /// if segment rotate was used, [OrthogonalMoveResult.relocated] if the tile
-  /// was placed and the source hole should be compacted, or failed.
+  /// Performs an orthogonal relocate.
   static OrthogonalMoveResult tryOrthogonallyRelocate(
     GridList<Tile> grid,
     int sourceIndex,
@@ -507,6 +703,7 @@ class TilePlacement {
     Tile tile, {
     required bool Function(int index) canAddAt,
     required bool Function(int index, Tile tile) canPlaceTile,
+    required Tile Function() getEmpty,
   }) {
     if (!canOrthogonallyRelocate(
       grid,
@@ -522,6 +719,38 @@ class TilePlacement {
       rotateSegment(grid, sourceIndex, destIndex, tile);
       return OrthogonalMoveResult.rotated;
     }
+    if (!grid.items[destIndex].isEmpty()) {
+      if (canInsertPushUpward(
+        grid,
+        sourceIndex,
+        destIndex,
+        movingTile: tile,
+      )) {
+        insertPushUpward(
+          grid,
+          sourceIndex,
+          destIndex,
+          tile,
+          getEmpty: getEmpty,
+        );
+        return OrthogonalMoveResult.pushed;
+      }
+      if (canInsertPushDownward(
+        grid,
+        sourceIndex,
+        destIndex,
+        movingTile: tile,
+      )) {
+        insertPushDownward(
+          grid,
+          sourceIndex,
+          destIndex,
+          tile,
+          getEmpty: getEmpty,
+        );
+        return OrthogonalMoveResult.pushed;
+      }
+    }
     grid.items[destIndex] = tile;
     return OrthogonalMoveResult.relocated;
   }
@@ -532,6 +761,8 @@ enum OrthogonalMoveResult {
   failed,
   rotated,
   relocated,
+  /// Cross-ground insert that shifted the destination stack up or down.
+  pushed,
 }
 
 /// All placeable categories including token strip types.

@@ -153,8 +153,16 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
       if (TilePlacement.isOrthogonal(_castleTiles, source, index)) {
         // Need the dragged tile for type checks when crossing the throne.
         // During drag the source cell is empty; use accept with tile from DnD.
-        // Drop target only needs geometry: rotate OK, or empty legal hole.
+        // Drop target: rotate OK, lift-from-below push-up OK, or empty legal hole.
         if (TilePlacement.canRotateSegment(_castleTiles, source, index)) {
+          return true;
+        }
+        if (TilePlacement.canInsertPushAcrossGround(
+          _castleTiles,
+          source,
+          index,
+          movingTile: _draggingTile?.tile,
+        )) {
           return true;
         }
         return cell.isEmpty() && _canAddAt(index);
@@ -311,8 +319,10 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
           t,
           requireSupport: false,
         ),
+        getEmpty: () => Empty(),
       );
-      if (result == OrthogonalMoveResult.relocated) {
+      if (result == OrthogonalMoveResult.relocated ||
+          result == OrthogonalMoveResult.pushed) {
         TilePlacement.compactTowardGround(copy, getEmpty: () => Empty());
       }
       if (result != OrthogonalMoveResult.failed) {
@@ -783,7 +793,7 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
           setState(() {
             _castleTiles = copy;
             _syncCastleFromParts();
-            _draggingTile = null;
+            _draggingTile = DraggedTileInfo(index, item);
             _gridDragSourceIndex = index;
             _selectedIndex = null;
             _selectedTokenIndex = null;

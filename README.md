@@ -17,9 +17,9 @@ The app has the following features:
 - Keep track of all your games!
 
 # Downloading the latest release
-The latest "official" release can be found under [Releases](https://github.com/mitchhymel/CastleAppraiser/releases)
+The latest "official" release can be found under [Releases](https://github.com/CYDVici0us/CastleAppraiser/releases)
 
-However, every push to main creates a release apk, so the true most recent build is available as an artifact from the most recent [workflow run here](https://github.com/mitchhymel/CastleAppraiser/actions)
+However, every push to main creates a release apk, so the true most recent build is available as an artifact from the most recent [workflow run here](https://github.com/CYDVici0us/CastleAppraiser/actions)
 
 # Useful commands for developing
 
