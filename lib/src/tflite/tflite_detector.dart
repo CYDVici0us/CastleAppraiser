@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:btcc/src/tflite/letterbox.dart';
 import 'package:btcc/src/utils/log.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
@@ -107,17 +108,10 @@ class TfliteDetector {
       throw StateError('TFLite model is not loaded');
     }
 
-    // Odd 90° rotations swap width/height relative to the decoded bitmap.
-    // Landscape EXIF Normal uses rotations=0; always-swapping dropped boxes
-    // (including small throne-room detections) after remapping.
-    final swapDims = rotations.isOdd;
-    final originalImageWidth =
-        (swapDims ? image.height : image.width).toDouble();
-    final originalImageHeight =
-        (swapDims ? image.width : image.height).toDouble();
-
+    final geometry = LetterboxGeometry.fromImageSize(image.width, image.height);
     final input = _preprocess(
       image: image,
+      geometry: geometry,
       inputImageSize: inputImageSize,
       mean: mean,
       std: std,
@@ -136,8 +130,8 @@ class TfliteDetector {
       outputs: outputs,
       scoreThreshold: scoreThreshold,
       inputImageSize: inputImageSize,
-      originalImageWidth: originalImageWidth,
-      originalImageHeight: originalImageHeight,
+      rotations: rotations,
+      geometry: geometry,
       logExtra: logExtra,
     );
 
@@ -173,18 +167,16 @@ class TfliteDetector {
 
   Float32List _preprocess({
     required img.Image image,
+    required LetterboxGeometry geometry,
     required int inputImageSize,
     required double mean,
     required double std,
     required int rotations,
   }) {
     // Pad to square, resize, rotate 90° clockwise `rotations` times, normalize.
-    final padSize = math.max(image.width, image.height) + 1;
-    var work = img.Image(width: padSize, height: padSize);
+    var work = img.Image(width: geometry.padSize, height: geometry.padSize);
     img.fill(work, color: img.ColorRgb8(0, 0, 0));
-    final ox = ((padSize - image.width) / 2).floor();
-    final oy = ((padSize - image.height) / 2).floor();
-    img.compositeImage(work, image, dstX: ox, dstY: oy);
+    img.compositeImage(work, image, dstX: geometry.ox, dstY: geometry.oy);
     work = img.copyResize(
       work,
       width: inputImageSize,
@@ -224,8 +216,8 @@ class TfliteDetector {
     required Map<int, Object> outputs,
     required double scoreThreshold,
     required int inputImageSize,
-    required double originalImageWidth,
-    required double originalImageHeight,
+    required int rotations,
+    required LetterboxGeometry geometry,
     required bool logExtra,
   }) {
     final unraveled = <_ProcessedGuess>[];
@@ -248,29 +240,22 @@ class TfliteDetector {
         final block = _BlockGuess(leaf);
         if (block.highestScore <= scoreThreshold) return;
 
-        var xMin = block.xPos - 0.5 * block.width;
-        var xMax = block.xPos + 0.5 * block.width;
-        var yMin = block.yPos - 0.5 * block.height;
-        var yMax = block.yPos + 0.5 * block.height;
-
-        xMin = xMin * originalImageWidth / inputImageSize;
-        xMax = xMax * originalImageWidth / inputImageSize;
-        yMin = yMin * originalImageHeight / inputImageSize;
-        yMax = yMax * originalImageHeight / inputImageSize;
-
-        final valid = xMin < xMax &&
-            yMin < yMax &&
-            xMin > 0 &&
-            yMin > 0 &&
-            xMax < originalImageWidth &&
-            yMax < originalImageHeight;
+        final mapped = mapModelBoxToImage(
+          xMin: block.xPos - 0.5 * block.width,
+          xMax: block.xPos + 0.5 * block.width,
+          yMin: block.yPos - 0.5 * block.height,
+          yMax: block.yPos + 0.5 * block.height,
+          inputImageSize: inputImageSize,
+          rotations: rotations,
+          geometry: geometry,
+        );
 
         final probability = block.probs[block.highestIndex];
         final guess = _ProcessedGuess(
-          xMin: xMin,
-          xMax: xMax,
-          yMin: yMin,
-          yMax: yMax,
+          xMin: mapped.xMin,
+          xMax: mapped.xMax,
+          yMin: mapped.yMin,
+          yMax: mapped.yMax,
           label: block.highestIndex,
           confidence: block.confidence,
           probability: probability,
@@ -281,10 +266,10 @@ class TfliteDetector {
           final labelName = block.highestIndex < _labels.length
               ? _labels[block.highestIndex]
               : '${block.highestIndex}';
-          log('GUESS: $valid, $labelName, $guess');
+          log('GUESS: ${mapped.valid}, $labelName, $guess');
         }
 
-        if (valid) {
+        if (mapped.valid) {
           unraveled.add(guess);
         }
       });

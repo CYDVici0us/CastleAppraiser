@@ -22,100 +22,194 @@ class TfliteHelper {
   }
 
   static GridList<Tile> convertGuessesToCastle(List<TfliteProcessedGuess> pGuesses){
-    GridList<Tile> castleTiles;
-    if (pGuesses.length == 0) {
+    if (pGuesses.isEmpty) {
       log('No guesses');
-      return new GridList<Tile>(3, createEmptyTileList(3,3));
+      return GridList<Tile>(3, createEmptyTileList(3, 3));
     }
 
+    // Highest score first so first-to-empty placement keeps the best detection.
+    final guesses = List<TfliteProcessedGuess>.from(pGuesses)
+      ..sort((a, b) => b.score.compareTo(a.score));
+
     log('Best Guesses:');
-    log(pGuesses);
-    GuessStats stats = GuessStats.getGuessStats(pGuesses);
+    log(guesses);
+    final stats = GuessStats.getGuessStats(guesses);
     stats.printStats();
 
-    // could still be a bug where averages are not set yet if the only
-    // label we found was throneroom, since we discard throneroom when
-    // calculating averages
-    int castleHeight = ((stats.maxY-stats.minY)/stats.averageY).round()+2;
-    int castleWidth = ((stats.maxX-stats.minX)/stats.averageX).round()+2;
-    castleTiles = new GridList<Tile>(castleWidth,createEmptyTileList(castleWidth,castleHeight));
+    var castleHeight =
+        ((stats.maxY - stats.minY) / stats.averageY).round() + 2;
+    var castleWidth =
+        ((stats.maxX - stats.minX) / stats.averageX).round() + 2;
+    // Token row needs slots (0..3, 0); keep at least 4 columns.
+    if (castleWidth < 4) castleWidth = 4;
+    if (castleHeight < 2) castleHeight = 2;
+    if (!castleWidth.isFinite || castleWidth < 1) castleWidth = 4;
+    if (!castleHeight.isFinite || castleHeight < 1) castleHeight = 3;
+
+    var castleTiles = GridList<Tile>(
+      castleWidth,
+      createEmptyTileList(castleWidth, castleHeight),
+    );
 
     TfliteProcessedGuess? throneRoomGuess;
     int? throneRoomBestX;
     int? throneRoomBestY;
-    Tile? bonusCard1;
-    Tile? bonusCard2;
-    Tile? royalAttendant1;
-    Tile? royalAttendant2;
+    final bonusCards = <({Tile tile, double score})>[];
+    final royalAttendants = <({Tile tile, double score})>[];
 
-    for(int i = 0; i<pGuesses.length;i++){
-      if(isNonTile(pGuesses[i])){
-        var tile = getCorrectTile(pGuesses[i], castleTiles.items);
-        switch(tile.tileType) {
+    for (final guess in guesses) {
+      if (isNonTile(guess)) {
+        final already = <Tile>[
+          ...bonusCards.map((e) => e.tile),
+          ...royalAttendants.map((e) => e.tile),
+        ];
+        final tile = getCorrectTile(guess, already);
+        switch (tile.tileType) {
           case TileType.RoyalAttendant:
-            if(royalAttendant1 == null){
-              royalAttendant1 = tile;
-            }
-            else{
-              royalAttendant2 = tile;
-            }
+            royalAttendants.add((tile: tile, score: guess.score));
             break;
           case TileType.BonusCard:
-            if(bonusCard1 == null){
-              bonusCard1 = tile;
-            }
-            else{
-              bonusCard2 = tile;
-            }
+            bonusCards.add((tile: tile, score: guess.score));
             break;
           default:
             break;
         }
+        continue;
       }
-      else {
-        var isTr = isThroneRoom(pGuesses[i]);
-        var bestx = getBestX(stats, pGuesses[i]) + 1;
-        var besty = getBestY(stats, pGuesses[i]) + 1;
-        if (isTr) {
-          throneRoomGuess = pGuesses[i];
+
+      final bestx = getBestX(stats, guess) + 1;
+      final besty = getBestY(stats, guess) + 1;
+      if (isThroneRoom(guess)) {
+        // Keep the highest-scoring throne (list is score-sorted).
+        if (throneRoomGuess == null) {
+          throneRoomGuess = guess;
           throneRoomBestX = bestx - 1;
           throneRoomBestY = besty;
         }
-        else {
-          castleTiles.items[getTileIndexInList(castleTiles, bestx, besty)] =
-              getCorrectTile(pGuesses[i], castleTiles.items);
-        }
+      } else {
+        _placeIfEmptyOrBetter(
+          castleTiles,
+          bestx,
+          besty,
+          getCorrectTile(guess, castleTiles.items),
+        );
       }
     }
 
-    if (throneRoomBestX == null || throneRoomBestY == null) {
+    if (throneRoomBestX == null ||
+        throneRoomBestY == null ||
+        throneRoomGuess == null) {
       log('No throneroom found');
-    }
-    else {
-      if(castleTiles.items[getTileIndexInList(castleTiles,throneRoomBestX,throneRoomBestY)].isEmpty() && castleTiles.items[getTileIndexInList(castleTiles,throneRoomBestX,throneRoomBestY)+1].isEmpty()){
-        castleTiles.items[getTileIndexInList(castleTiles, throneRoomBestX, throneRoomBestY)]= getCorrectTile(throneRoomGuess!, castleTiles.items);
-        castleTiles.items[getTileIndexInList(castleTiles,throneRoomBestX,throneRoomBestY)+1] = Placeholder();
-      }
-      else{
-        castleTiles.items[getTileIndexInList(castleTiles, throneRoomBestX, throneRoomBestY)+1]= getCorrectTile(throneRoomGuess!, castleTiles.items);
-        castleTiles.items[getTileIndexInList(castleTiles,throneRoomBestX,throneRoomBestY)+2] = Placeholder();
-      }
-
-      // Removing this since there is infinite recursion in the case where
-      // there are at least two connected tiles that are unconnected to castle
-      //
-      // have to mark visited tiles as already visited
-      //castleTiles = removeUnconnectedTiles(castleTiles);
+    } else {
+      castleTiles = _placeThroneRoom(
+        castleTiles,
+        throneRoomGuess,
+        throneRoomBestX,
+        throneRoomBestY,
+      );
     }
 
-    if(bonusCard1 != null)castleTiles.items[getTileIndexInList(castleTiles,0,0)] = bonusCard1;
-    if(bonusCard2 != null)castleTiles.items[getTileIndexInList(castleTiles,1,0)] = bonusCard2;
-    if(royalAttendant1 != null)castleTiles.items[getTileIndexInList(castleTiles,2,0)] = royalAttendant1;
-    if(royalAttendant2 != null)castleTiles.items[getTileIndexInList(castleTiles,3,0)] = royalAttendant2;
+    final topBonus = bonusCards.take(2).toList();
+    final topAttendants = royalAttendants.take(2).toList();
+    if (topBonus.isNotEmpty) {
+      _placeIfEmptyOrBetter(castleTiles, 0, 0, topBonus[0].tile);
+    }
+    if (topBonus.length > 1) {
+      _placeIfEmptyOrBetter(castleTiles, 1, 0, topBonus[1].tile);
+    }
+    if (topAttendants.isNotEmpty) {
+      _placeIfEmptyOrBetter(castleTiles, 2, 0, topAttendants[0].tile);
+    }
+    if (topAttendants.length > 1) {
+      _placeIfEmptyOrBetter(castleTiles, 3, 0, topAttendants[1].tile);
+    }
 
     log('Resulting castle tiles:');
     log(castleTiles);
     return castleTiles;
+  }
+
+  /// Expands the grid if needed and places the 2-wide throne + placeholder.
+  static GridList<Tile> _placeThroneRoom(
+    GridList<Tile> castleTiles,
+    TfliteProcessedGuess throneRoomGuess,
+    int throneRoomBestX,
+    int throneRoomBestY,
+  ) {
+    var grid = castleTiles;
+    var x = throneRoomBestX;
+    var y = throneRoomBestY;
+
+    if (y < 0) y = 0;
+    if (y >= grid.height) {
+      // Grow downward.
+      final extra = y - grid.height + 1;
+      final grown = List<Tile>.from(grid.items);
+      for (var i = 0; i < extra * grid.width; i++) {
+        grown.add(Empty());
+      }
+      grid = GridList<Tile>(grid.width, grown);
+    }
+
+    // Prefer the requested pair; if occupied, shift one cell right.
+    var placeX = x;
+    if (placeX < 0) placeX = 0;
+    final needsShift = !_cellEmpty(grid, placeX, y) ||
+        !_cellEmpty(grid, placeX + 1, y);
+    if (needsShift) placeX += 1;
+    if (placeX < 0) placeX = 0;
+
+    // Ensure width fits throne + placeholder (+ optional shift).
+    final needWidth = placeX + 2;
+    if (needWidth > grid.width) {
+      grid = _expandWidth(grid, needWidth);
+    }
+
+    final throne = getCorrectTile(throneRoomGuess, grid.items);
+    final idx = getTileIndexInList(grid, placeX, y);
+    grid.items[idx] = throne;
+    grid.items[idx + 1] = Placeholder();
+    return grid;
+  }
+
+  static GridList<Tile> _expandWidth(GridList<Tile> grid, int newWidth) {
+    if (newWidth <= grid.width) return grid;
+    final grown = <Tile>[];
+    for (var row = 0; row < grid.height; row++) {
+      for (var col = 0; col < newWidth; col++) {
+        if (col < grid.width) {
+          grown.add(grid.items[row * grid.width + col]);
+        } else {
+          grown.add(Empty());
+        }
+      }
+    }
+    return GridList<Tile>(newWidth, grown);
+  }
+
+  static bool _cellEmpty(GridList<Tile> grid, int x, int y) {
+    if (x < 0 || y < 0 || x >= grid.width || y >= grid.height) {
+      return true;
+    }
+    return grid.items[getTileIndexInList(grid, x, y)].isEmpty();
+  }
+
+  /// Places [tile] when the cell is empty. Because callers sort by score
+  /// descending, the first write wins and lower-score collisions are ignored.
+  static void _placeIfEmptyOrBetter(
+    GridList<Tile> grid,
+    int x,
+    int y,
+    Tile tile,
+  ) {
+    if (x < 0 || y < 0 || x >= grid.width || y >= grid.height) {
+      log('Skipping out-of-bounds placement at ($x,$y) for ${tile.id}');
+      return;
+    }
+    final idx = getTileIndexInList(grid, x, y);
+    if (grid.items[idx].isEmpty()) {
+      grid.items[idx] = tile;
+    }
   }
 
   static GridList<Tile> removeUnconnectedTiles(GridList<Tile> castleTiles){
@@ -227,8 +321,8 @@ class TfliteHelper {
         if(!isTileInList(currentTiles,TileId.BallRoomPerCorridor2)) return TileHelper().getTileById(TileId.BallRoomPerCorridor2);
         break;
       case TileLabels.BRD:
-        if(!isTileInList(currentTiles,TileId.BallRoomPerOutdoor)) return TileHelper().getTileById(TileId.BallRoomPerOutdoor);
-        if(!isTileInList(currentTiles,TileId.BallRoomPerOutdoor2)) return TileHelper().getTileById(TileId.BallRoomPerOutdoor2);
+        if(!isTileInList(currentTiles,TileId.BallRoomPerDownstairs)) return TileHelper().getTileById(TileId.BallRoomPerDownstairs);
+        if(!isTileInList(currentTiles,TileId.BallRoomPerDownstairs2)) return TileHelper().getTileById(TileId.BallRoomPerDownstairs2);
         break;
       case TileLabels.BRF:
         if(!isTileInList(currentTiles,TileId.BallRoomPerFood)) return TileHelper().getTileById(TileId.BallRoomPerFood);
@@ -341,59 +435,76 @@ class GuessStats{
   });
 
   static GuessStats getGuessStats(List<TfliteProcessedGuess> pg){
-    double tempMiX;
-    double tempMaX;
-    double tempMiY;
-    double tempMaY;
-    double tempAX;
-    double tempAY;
-    double tempSX;
-    double tempSY;
+    final xposVals = <double>[];
+    final yposVals = <double>[];
+    final xVals = <double>[];
+    final yVals = <double>[];
+    final throneSizeX = <double>[];
+    final throneSizeY = <double>[];
 
-    TfliteProcessedGuess tempGuess;
-    List<double> xVals = <double>[];
-    List<double> xposVals = <double>[];
-    List<double> yVals = <double>[];
-    List<double> yposVals = <double>[];
-    for(var i=0;i<pg.length;i++){
-      tempGuess = pg[i];
+    for (final tempGuess in pg) {
+      // Bonus cards / attendants sit outside the castle and must not skew
+      // extents or average tile pitch used for grid binning.
+      if (TfliteHelper.isNonTile(tempGuess)) {
+        continue;
+      }
+
       xposVals.add(tempGuess.xMax);
       xposVals.add(tempGuess.xMin);
-
-      if (!TfliteHelper.isThroneRoom(tempGuess))
-        xVals.add(tempGuess.xMax-tempGuess.xMin);
-
       yposVals.add(tempGuess.yMax);
       yposVals.add(tempGuess.yMin);
-      if (!TfliteHelper.isThroneRoom(tempGuess))
-        yVals.add(tempGuess.yMax-tempGuess.yMin);
+
+      final w = tempGuess.xMax - tempGuess.xMin;
+      final h = tempGuess.yMax - tempGuess.yMin;
+      if (TfliteHelper.isThroneRoom(tempGuess)) {
+        // Throne is ~2 tiles wide; keep for fallback pitch only.
+        throneSizeX.add(w / 2.0);
+        throneSizeY.add(h);
+      } else {
+        xVals.add(w);
+        yVals.add(h);
+      }
     }
 
-    tempMiX= StatHelper.getMin(xposVals);
-    tempMaX= StatHelper.getMax(xposVals);
-    tempMiY= StatHelper.getMin(yposVals);
-    tempMaY= StatHelper.getMax(yposVals);
+    // Throne-only photo: derive cell size from the throne box.
+    if (xVals.isEmpty && throneSizeX.isNotEmpty) {
+      xVals.addAll(throneSizeX);
+    }
+    if (yVals.isEmpty && throneSizeY.isNotEmpty) {
+      yVals.addAll(throneSizeY);
+    }
 
-    tempSX = StatHelper.getSTD(xVals);
-    tempSY = StatHelper.getSTD(yVals);
+    // Last resort so we never divide by zero / NaN.
+    if (xVals.isEmpty) xVals.add(1);
+    if (yVals.isEmpty) yVals.add(1);
+    if (xposVals.isEmpty) {
+      xposVals.addAll([0, 1]);
+      yposVals.addAll([0, 1]);
+    }
 
-    tempAX = StatHelper.getAverage(xVals);
-    tempAY = StatHelper.getAverage(yVals);
+    final tempMiX = StatHelper.getMin(xposVals);
+    final tempMaX = StatHelper.getMax(xposVals);
+    final tempMiY = StatHelper.getMin(yposVals);
+    final tempMaY = StatHelper.getMax(yposVals);
 
-    log('The Average X: ${StatHelper.getAverage(xVals)}');
-    //log('The Average X Wo outliers: $tempAX');
-    log('The Average X: ${StatHelper.getAverage(yVals)}');
-    //log('The Average X Wo outliers: $tempAY');
+    final tempSX = StatHelper.getSTD(xVals);
+    final tempSY = StatHelper.getSTD(yVals);
 
-    return new GuessStats(
+    final tempAX = StatHelper.getMedian(xVals);
+    final tempAY = StatHelper.getMedian(yVals);
+
+    log('The Median X (tile pitch): $tempAX');
+    log('The Median Y (tile pitch): $tempAY');
+
+    return GuessStats(
       minX: tempMiX,
       maxX: tempMaX,
       minY: tempMiY,
       maxY: tempMaY,
-      averageX: tempAX,
-      averageY: tempAY,
+      averageX: tempAX > 0 ? tempAX : 1,
+      averageY: tempAY > 0 ? tempAY : 1,
       stdX: tempSX,
-      stdY: tempSY
+      stdY: tempSY,
     );
   }
 
