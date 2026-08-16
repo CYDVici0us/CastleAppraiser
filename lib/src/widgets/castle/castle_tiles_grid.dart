@@ -36,6 +36,7 @@ class CastleTilesGrid extends StatelessWidget {
 
     // if scaleWithScreen is true, ignore scale
     double scaleToUse = _getScale(context);
+    final cellSize = TileWidget.defaultTileWidthHeight * scaleToUse;
 
     List<Widget> columnChildren = [];
     List<Widget> widgetList = [];
@@ -46,12 +47,28 @@ class CastleTilesGrid extends StatelessWidget {
         widgetList = [];
       }
 
-      widgetList.add(TileWidget(castleTiles.items[i],
+      final tile = castleTiles.items[i];
+      final tileWidget = TileWidget(
+        tile,
         scale: scaleToUse,
         emptyColor: Colors.transparent,
         showInvalidBadge:
             TilePlacement.hasInvalidPlacement(castleTiles, i),
-      ));
+      );
+
+      // Keep grid column width uniform; bonus cards are narrower than a cell.
+      if (tile.isBonusCard() || tile.isRoyalAttendant()) {
+        widgetList.add(SizedBox(
+          width: cellSize,
+          height: cellSize,
+          child: Align(
+            alignment: Alignment.center,
+            child: tileWidget,
+          ),
+        ));
+      } else {
+        widgetList.add(tileWidget);
+      }
     }
 
     columnChildren.add(Row(children:widgetList));

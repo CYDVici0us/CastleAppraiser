@@ -100,6 +100,17 @@ class EditableGameList extends StatelessWidget {
     }
   }
 
+  void _shiftCastle(int castleIndex, int delta) {
+    final count = game.castles.length;
+    final target = castleIndex + delta;
+    if (target < 0 || target >= count) return;
+
+    final permutation = List<int>.generate(count, (i) => i);
+    permutation[castleIndex] = target;
+    permutation[target] = castleIndex;
+    rearrangedCastlesCallback(permutation);
+  }
+
   @override
   Widget build(BuildContext context) {
     final entries = _buildEntries();
@@ -125,6 +136,7 @@ class EditableGameList extends StatelessWidget {
 
         if (entry.kind == _EntryKind.castle) {
           final castle = game.castles[entry.index];
+          final castleIndex = entry.index;
           return Padding(
             key: ValueKey('castle-${castle.hiveCastle!.key}'),
             padding: const EdgeInsets.all(4),
@@ -139,6 +151,12 @@ class EditableGameList extends StatelessWidget {
               onEdit: editCastleCallback == null
                   ? null
                   : () => editCastleCallback!(castle),
+              onMoveUp: castleIndex > 0
+                  ? () => _shiftCastle(castleIndex, -1)
+                  : null,
+              onMoveDown: castleIndex < game.castles.length - 1
+                  ? () => _shiftCastle(castleIndex, 1)
+                  : null,
             ),
           );
         }
@@ -165,6 +183,9 @@ class EditableGameList extends StatelessWidget {
               PlayerListItem(
                 name: game.playerNames[entry.index],
                 score: isBench ? null : game.getPlayerScore(entry.index),
+                primaryCastleDirection: isBench
+                    ? null
+                    : game.getPlayerPrimaryCastleDirection(entry.index),
                 isWinner: winningPlayer == entry.index,
                 isBench: isBench,
                 onRename: () => renamePlayerCallback(entry.index),

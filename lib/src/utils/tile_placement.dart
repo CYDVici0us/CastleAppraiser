@@ -12,6 +12,8 @@ enum CastleLevel {
 enum PlacementInvalidReason {
   aboveOutdoor,
   unsupportedAboveGround,
+  /// Below-ground room with no tile directly above (floating basement).
+  unsupportedBelowGround,
   wrongTypeForLevel,
   /// Empty hole under an upper-floor room or through a run of rooms.
   structuralGap,
@@ -21,7 +23,14 @@ enum PlacementInvalidReason {
 class TilePlacement {
   TilePlacement._();
 
-  static bool _isSupportTile(Tile tile) => !tile.isEmpty();
+  static bool _isSupportTile(Tile tile) =>
+      !tile.isEmpty() && !_isVisualToken(tile);
+
+  /// Bonus / royal attendants — scored tokens, not structural rooms.
+  /// In view/scoring they sit in a visual row above the castle; nothing
+  /// needs to be below them and they must not create placement errors.
+  static bool _isVisualToken(Tile tile) =>
+      tile.isBonusCard() || tile.isRoyalAttendant();
 
   /// Y index of the throne room row, or null if none.
   static int? groundRow(GridList<Tile> grid) {
@@ -55,6 +64,51 @@ class TilePlacement {
     final below = index + grid.width;
     if (below >= grid.items.length) return false;
     return _isSupportTile(grid.items[below]);
+  }
+
+  /// Occupied cell directly above [index] that anchors a below-ground room.
+  static bool hasSupportAbove(GridList<Tile> grid, int index) {
+    if (index < 0 || index >= grid.items.length) return false;
+    final above = index - grid.width;
+    if (above < 0) return false;
+    return _isSupportTile(grid.items[above]);
+  }
+
+  /// Whether an empty cell may receive a newly added room.
+  ///
+  /// Requires ortho adjacency (or an interior hole), blocks above Outdoor,
+  /// blocks above-ground cells with no support below, and blocks below-ground
+  /// cells with no support above — so floating floors/basements cannot start
+  /// from the add/search UI.
+  static bool canAddAtEmptyCell(
+    GridList<Tile> grid,
+    int index, {
+    required bool Function(Tile) isOccupied,
+  }) {
+    if (index < 0 || index >= grid.items.length) return false;
+    if (!grid.items[index].isEmpty()) return false;
+    if (isDirectlyAboveOutdoor(grid, index)) return false;
+
+    final level = levelRelativeToGround(grid, index);
+    if (level == CastleLevel.above && !hasSupportBelow(grid, index)) {
+      return false;
+    }
+    if (level == CastleLevel.below && !hasSupportAbove(grid, index)) {
+      return false;
+    }
+
+    if (GridListNormalizer.canPlaceAdjacent(
+      grid,
+      index,
+      isOccupied: isOccupied,
+    )) {
+      return true;
+    }
+    return GridListNormalizer.isEmptyInsideOccupiedBounds(
+      grid,
+      index,
+      isOccupied: isOccupied,
+    );
   }
 
   /// Room / token types allowed at [level].
@@ -91,12 +145,18 @@ class TilePlacement {
         .toList();
   }
 
-  /// True when [index] is the cell immediately above an Outdoor tile.
+  /// True Outdoor rooms block stacking above them. Secrets that copy an
+  /// Outdoor for scoring still use [Tile.tileType] == Outdoor via [Tile.duplicate],
+  /// but [Tile.trueTileType] stays Secret — those may have rooms above.
+  static bool isTrueOutdoor(Tile tile) =>
+      tile.trueTileType == TileType.Outdoor;
+
+  /// True when [index] is the cell immediately above a true Outdoor tile.
   static bool isDirectlyAboveOutdoor(GridList<Tile> grid, int index) {
     if (index < 0 || index >= grid.items.length) return false;
     final below = index + grid.width;
     if (below >= grid.items.length) return false;
-    return grid.items[below].tileType == TileType.Outdoor;
+    return isTrueOutdoor(grid.items[below]);
   }
 
   /// True when placing an Outdoor at [index] would put it under an occupied cell.
@@ -109,8 +169,9 @@ class TilePlacement {
 
   /// Whether [tile] may be placed at [index].
   ///
-  /// [requireSupport] applies to above-ground cells (use false when replacing
-  /// an already-occupied camera cell that may be floating).
+  /// [requireSupport] applies to above-ground (needs tile below) and
+  /// below-ground (needs tile above). Use false when replacing an already
+  /// illegal camera cell that may be floating.
   /// [allowAboveOutdoor] allows replacing an already-illegal above-Outdoor cell.
   static bool canPlaceTile(
     GridList<Tile> grid,
@@ -127,8 +188,7 @@ class TilePlacement {
     if (!allowAboveOutdoor && isDirectlyAboveOutdoor(grid, index)) {
       return false;
     }
-    if (tile.tileType == TileType.Outdoor &&
-        wouldPutOutdoorUnderTile(grid, index)) {
+    if (isTrueOutdoor(tile) && wouldPutOutdoorUnderTile(grid, index)) {
       return false;
     }
 
@@ -137,10 +197,13 @@ class TilePlacement {
       return false;
     }
 
-    if (requireSupport &&
-        level == CastleLevel.above &&
-        !hasSupportBelow(grid, index)) {
-      return false;
+    if (requireSupport) {
+      if (level == CastleLevel.above && !hasSupportBelow(grid, index)) {
+        return false;
+      }
+      if (level == CastleLevel.below && !hasSupportAbove(grid, index)) {
+        return false;
+      }
     }
 
     return true;
@@ -156,6 +219,8 @@ class TilePlacement {
     if (tile.tileType == TileType.Placeholder) {
       return const [];
     }
+    // Visual-only scoring tokens (bonus / royal attendant row).
+    if (_isVisualToken(tile)) return const [];
 
     if (tile.isEmpty()) {
       return isInvalidStructuralGap(grid, index)
@@ -174,43 +239,67 @@ class TilePlacement {
     if (level == CastleLevel.above && !hasSupportBelow(grid, index)) {
       reasons.add(PlacementInvalidReason.unsupportedAboveGround);
     }
+    if (level == CastleLevel.below && !hasSupportAbove(grid, index)) {
+      reasons.add(PlacementInvalidReason.unsupportedBelowGround);
+    }
     if (level != null && !isTypeAllowedAtLevel(tile.tileType, level)) {
       reasons.add(PlacementInvalidReason.wrongTypeForLevel);
     }
     return reasons;
   }
 
-  /// Empty cell that breaks castle structure (support hole or gap in a room run).
+  /// Empty cell that breaks castle structure.
+  ///
+  /// - Missing support under an upper-floor room, or above a below-ground room
+  /// - Horizontal holes on the **ground** row only (above/below may have gaps)
+  /// Empty cells directly above Outdoor are never gaps (unbuildable by rule).
   static bool isInvalidStructuralGap(GridList<Tile> grid, int index) {
     if (index < 0 || index >= grid.items.length) return false;
     if (!grid.items[index].isEmpty()) return false;
+
+    // Intentionally empty — nothing may be built above Outdoor.
+    if (isDirectlyAboveOutdoor(grid, index)) return false;
 
     final w = grid.width;
     final above = index - w;
     if (above >= 0) {
       final aboveTile = grid.items[above];
+      // Tokens sit in a visual row; empty cells under them are not gaps.
       if (!aboveTile.isEmpty() &&
           aboveTile.tileType != TileType.Placeholder &&
+          !_isVisualToken(aboveTile) &&
           levelRelativeToGround(grid, above) == CastleLevel.above) {
         // Empty under an upper-floor room → missing support.
         return true;
       }
     }
 
-    // Hole in a horizontal or vertical run of rooms.
-    final x = index % w;
-    final y = index ~/ w;
-    bool occ(int nx, int ny) {
-      if (nx < 0 || ny < 0 || nx >= w || ny >= grid.height) return false;
-      final t = grid.items[nx + ny * w];
-      return !t.isEmpty() && t.tileType != TileType.Placeholder;
+    final below = index + w;
+    if (below < grid.items.length) {
+      final belowTile = grid.items[below];
+      if (!belowTile.isEmpty() &&
+          belowTile.tileType != TileType.Placeholder &&
+          !_isVisualToken(belowTile) &&
+          levelRelativeToGround(grid, below) == CastleLevel.below) {
+        // Empty above a below-ground room → floating basement.
+        return true;
+      }
     }
 
-    final left = occ(x - 1, y);
-    final right = occ(x + 1, y);
-    final up = occ(x, y - 1);
-    final down = occ(x, y + 1);
-    if ((left && right) || (up && down)) return true;
+    // Ground floor only: no horizontal gaps between rooms.
+    if (levelRelativeToGround(grid, index) == CastleLevel.ground) {
+      final x = index % w;
+      final y = index ~/ w;
+      bool occ(int nx, int ny) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= grid.height) return false;
+        final t = grid.items[nx + ny * w];
+        return !t.isEmpty() &&
+            t.tileType != TileType.Placeholder &&
+            !_isVisualToken(t);
+      }
+
+      if (occ(x - 1, y) && occ(x + 1, y)) return true;
+    }
 
     return false;
   }
@@ -229,6 +318,8 @@ class TilePlacement {
         return 'Cannot sit above Outdoor';
       case PlacementInvalidReason.unsupportedAboveGround:
         return 'Needs a tile below for support';
+      case PlacementInvalidReason.unsupportedBelowGround:
+        return 'Needs a tile above for support';
       case PlacementInvalidReason.wrongTypeForLevel:
         return 'Wrong room type for this floor';
       case PlacementInvalidReason.structuralGap:

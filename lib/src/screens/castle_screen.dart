@@ -6,6 +6,7 @@ import 'package:btcc/src/utils/statistics_helper.dart';
 import 'package:btcc/src/utils/typedefs.dart';
 import 'package:btcc/src/widgets/async_confirmation_dialog.dart';
 import 'package:btcc/src/widgets/background_container.dart';
+import 'package:btcc/src/widgets/castle/castle_export_card.dart';
 import 'package:btcc/src/widgets/castle/castle_image.dart';
 import 'package:btcc/src/widgets/castle/castle_tiles_grid.dart';
 import 'package:btcc/src/widgets/castle/score_card_widget.dart';
@@ -101,15 +102,32 @@ class CastleScreen extends StatelessWidget {
     );
   }
 
+  Widget _sectionHeader(BuildContext context, String title) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+      child: Text(
+        title,
+        style: theme.textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final title = castle.hiveCastle?.title ?? castle.title;
+    final totalScore = castle.getScore();
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
         title: FlowBreadcrumb(
           segments: [
             if (gameTitle != null) gameTitle!,
-            '$title: ${castle.getScore()}',
+            'Scoring',
           ],
           onFirstSegmentTap: gameTitle == null
               ? null
@@ -143,26 +161,59 @@ class CastleScreen extends StatelessWidget {
           behavior: ScrollBehavior(),
           child: GlowingOverscrollIndicator(
             axisDirection: AxisDirection.down,
-            color: StatHelper.getColorBasedOnScore(castle.getScore()),
+            color: StatHelper.getColorBasedOnScore(totalScore),
             child: ListView(
+              padding: const EdgeInsets.only(bottom: 16),
               children: [
-                if(!onlyShowScoreCard) InteractiveModalWidget(
-                  child: CastleImage(castle),
-                ),
-                if(!onlyShowScoreCard) InteractiveModalWidget(
-                  child: CastleTilesGrid(castle.castleTiles),
-                  builder: (controller) => FloatingActionButton(
-                    child: Icon(Icons.screenshot),
-                    onPressed: () => _onModalFabPressed(context, controller),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '$totalScore',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.displaySmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: StatHelper.getColorBasedOnScore(totalScore),
+                          height: 1.0,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+                if (!onlyShowScoreCard) ...[
+                  InteractiveModalWidget(
+                    child: CastleImage(castle),
+                  ),
+                  InteractiveModalWidget(
+                    child: CastleTilesGrid(castle.castleTiles),
+                    modalChild: CastleExportCard(castle: castle),
+                    builder: (controller) => FloatingActionButton(
+                      child: Icon(Icons.screenshot),
+                      onPressed: () =>
+                          _onModalFabPressed(context, controller),
+                    ),
+                  ),
+                ],
+                _sectionHeader(context, 'Points per tile'),
                 TileScoreGrid(castle),
+                _sectionHeader(context, 'Tiles by category'),
                 ScoreCardWidget(castle),
-              ]
+              ],
             ),
-          )
-        )
-      )
+          ),
+        ),
+      ),
     );
   }
 }

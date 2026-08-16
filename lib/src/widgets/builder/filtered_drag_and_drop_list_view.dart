@@ -2,7 +2,6 @@ import 'package:btcc/src/utils/typedefs.dart';
 import 'package:flutter/material.dart';
 
 class FilteredDragAndDropListView<T extends Object> extends StatefulWidget {
-
   final String hintText;
   final ValueChanged<String> onTextChanged;
   final VoidCallback onClearPressed;
@@ -10,37 +9,39 @@ class FilteredDragAndDropListView<T extends Object> extends StatefulWidget {
   final List<Widget> children;
   final Axis scrollDirection;
   final EdgeInsetsGeometry listItemPadding;
-  final double height;
+  final double listHeight;
   final Color containerColor;
   final Color textBackgroundColor;
 
   FilteredDragAndDropListView({
+    super.key,
     required this.hintText,
     required this.onTextChanged,
     required this.onClearPressed,
     required this.onAcceptWithDetails,
     required this.children,
-    this.scrollDirection=Axis.horizontal,
-    this.listItemPadding=const EdgeInsets.all(0.0),
-    this.height = 150,
+    this.scrollDirection = Axis.horizontal,
+    this.listItemPadding =
+        const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    this.listHeight = 100,
     this.containerColor = Colors.blueGrey,
-    this.textBackgroundColor = Colors.blueGrey
+    this.textBackgroundColor = Colors.blueGrey,
   });
 
   @override
   createState() => _FilteredDragAndDropListViewState<T>();
 }
 
-class _FilteredDragAndDropListViewState<T extends Object> extends State<FilteredDragAndDropListView<T>> {
-
+class _FilteredDragAndDropListViewState<T extends Object>
+    extends State<FilteredDragAndDropListView<T>> {
   late TextEditingController _textEditingController;
   late ScrollController _controller;
 
   @override
   void initState() {
     super.initState();
-    _textEditingController = new TextEditingController();
-    _controller = new ScrollController();
+    _textEditingController = TextEditingController();
+    _controller = ScrollController();
   }
 
   @override
@@ -50,53 +51,83 @@ class _FilteredDragAndDropListViewState<T extends Object> extends State<Filtered
     super.dispose();
   }
 
+  void _clear() {
+    _textEditingController.clear();
+    widget.onClearPressed();
+    FocusScope.of(context).unfocus();
+    setState(() {});
+  }
+
   @override
-  Widget build(BuildContext context) => Container(
-      height: widget.height,
+  Widget build(BuildContext context) {
+    final hasResults = widget.children.isNotEmpty;
+    final hasText = _textEditingController.text.isNotEmpty;
+
+    return Container(
       color: widget.containerColor,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (hasResults)
+            SizedBox(
+              height: widget.listHeight,
+              child: DragTarget<T>(
+                onAcceptWithDetails: (details) =>
+                    widget.onAcceptWithDetails(details, _controller),
+                builder: (_, __, ___) => ListView(
+                  controller: _controller,
+                  scrollDirection: widget.scrollDirection,
+                  padding: widget.listItemPadding,
+                  children: widget.children,
+                ),
+              ),
+            ),
           Container(
             color: widget.textBackgroundColor,
-            child: TextField(
-              controller: _textEditingController,
-              textAlign: TextAlign.center,
-              showCursor: true,
-              autofocus: false,
-              onChanged: widget.onTextChanged,
-              cursorColor: Colors.white,
-
-              decoration: InputDecoration(
-                hintText: widget.hintText,
-                focusedBorder: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                errorBorder: InputBorder.none,
-                disabledBorder: InputBorder.none,
-                suffixIcon: IconButton(
-                  onPressed: () {
-                    _textEditingController.clear();
-                    widget.onClearPressed();
-                    FocusScope.of(context).requestFocus(FocusNode());
-                  },
-                  icon: Icon(Icons.clear),
-                  color: Colors.white,
-                )
-              ),
-            )
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _textEditingController,
+                    textAlign: TextAlign.center,
+                    showCursor: true,
+                    autofocus: false,
+                    onChanged: (value) {
+                      setState(() {});
+                      widget.onTextChanged(value);
+                    },
+                    cursorColor: Colors.white,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: widget.hintText,
+                      hintStyle: const TextStyle(color: Colors.white70),
+                      focusedBorder: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      errorBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      isDense: true,
+                      contentPadding:
+                          const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: hasText ? _clear : null,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    disabledForegroundColor: Colors.white38,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  child: const Text('Clear'),
+                ),
+              ],
+            ),
           ),
-          Expanded(
-            child: DragTarget<T>(
-              onAcceptWithDetails: (details) => widget.onAcceptWithDetails(details, _controller),
-              builder: (_, candidateData, rejectedData) => ListView(
-                controller: _controller,
-                scrollDirection: widget.scrollDirection,
-                padding: widget.listItemPadding,
-                children: widget.children,
-              ),
-            )
-          )
         ],
-      )
-  );
+      ),
+    );
+  }
 }

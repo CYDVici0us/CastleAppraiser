@@ -143,6 +143,159 @@ void main() {
         isFalse,
       );
     });
+
+    test('allows tile above secret that copies outdoor', () {
+      final secret = BehindTheBookCase()..duplicate = Biergarten();
+      expect(secret.tileType, TileType.Outdoor);
+      expect(secret.trueTileType, TileType.Secret);
+
+      final grid = GridList<Tile>(4, [
+        Empty(), Empty(), Empty(), Empty(),
+        Empty(), ThroneRoomPerCorridorFood(), Placeholder(), secret,
+        Empty(), Empty(), Empty(), Empty(),
+      ]);
+      // Cell above secret-as-outdoor (index 3)
+      expect(TilePlacement.isDirectlyAboveOutdoor(grid, 3), isFalse);
+      expect(TilePlacement.canPlaceTile(grid, 3, Kitchen()), isTrue);
+      expect(TilePlacement.invalidReasons(grid, 3), isEmpty);
+
+      final stacked = GridList<Tile>(4, [
+        Empty(), Empty(), Empty(), Kitchen(),
+        Empty(), ThroneRoomPerCorridorFood(), Placeholder(), secret,
+        Empty(), Empty(), Empty(), Empty(),
+      ]);
+      expect(
+        TilePlacement.invalidReasons(stacked, 3),
+        isNot(contains(PlacementInvalidReason.aboveOutdoor)),
+      );
+    });
+
+    test('default canPlaceTile rejects floating tiles (regression)', () {
+      // Kitchen above throne is supported. Empties above empty ground float.
+      final grid = GridList<Tile>(4, [
+        Empty(), Kitchen(), Empty(), Empty(),
+        Empty(), ThroneRoomPerCorridorFood(), Placeholder(), Empty(),
+        Empty(), Empty(), Empty(), Empty(),
+      ]);
+
+      // Default requireSupport must stay true — floating rooms/corridors blocked.
+      expect(TilePlacement.canPlaceTile(grid, 0, GreatHall()), isFalse);
+      expect(TilePlacement.canPlaceTile(grid, 0, Kitchen()), isFalse);
+      expect(TilePlacement.canPlaceTile(grid, 3, ThroughTheWardrobe()), isFalse);
+
+      // Supported cells above throne / placeholder remain legal.
+      expect(TilePlacement.canPlaceTile(grid, 1, Fountain()), isTrue);
+      expect(TilePlacement.canPlaceTile(grid, 2, Kitchen()), isTrue);
+
+      // Soft path still allows inspecting camera leftovers.
+      expect(
+        TilePlacement.canPlaceTile(grid, 0, Kitchen(), requireSupport: false),
+        isTrue,
+      );
+    });
+  });
+
+  group('TilePlacement canAddAtEmptyCell', () {
+    bool occupied(Tile t) => !t.isEmpty();
+
+    test('blocks unsupported above-ground empties even when adjacent', () {
+      final grid = GridList<Tile>(4, [
+        Empty(), Kitchen(), Empty(), Empty(),
+        Empty(), ThroneRoomPerCorridorFood(), Placeholder(), Empty(),
+        Empty(), Empty(), Empty(), Empty(),
+      ]);
+
+      // Index 0 floats above empty but is ortho-adjacent to the upper kitchen.
+      expect(
+        TilePlacement.canAddAtEmptyCell(grid, 0, isOccupied: occupied),
+        isFalse,
+      );
+      // Index 3 floats and is not a legal add target.
+      expect(
+        TilePlacement.canAddAtEmptyCell(grid, 3, isOccupied: occupied),
+        isFalse,
+      );
+
+      // Ground adjacent to throne is fine.
+      expect(
+        TilePlacement.canAddAtEmptyCell(grid, 4, isOccupied: occupied),
+        isTrue,
+      );
+      expect(
+        TilePlacement.canAddAtEmptyCell(grid, 7, isOccupied: occupied),
+        isTrue,
+      );
+    });
+
+    test('allows supported above-ground empty beside a room', () {
+      // Two supported empties beside kitchen above throne/placeholder.
+      final grid = GridList<Tile>(4, [
+        Empty(), Kitchen(), Empty(), Empty(),
+        GreatHall(), ThroneRoomPerCorridorFood(), Placeholder(), Empty(),
+        Empty(), Empty(), Empty(), Empty(),
+      ]);
+      // Index 0 is above GreatHall — supported and adjacent to kitchen.
+      expect(
+        TilePlacement.canAddAtEmptyCell(grid, 0, isOccupied: occupied),
+        isTrue,
+      );
+      expect(TilePlacement.canPlaceTile(grid, 0, Kitchen()), isTrue);
+    });
+
+    test('blocks empty directly above outdoor', () {
+      final grid = GridList<Tile>(4, [
+        Empty(), Empty(), Empty(), Empty(),
+        Empty(), ThroneRoomPerCorridorFood(), Placeholder(), Biergarten(),
+        Empty(), Empty(), Empty(), Empty(),
+      ]);
+      expect(
+        TilePlacement.canAddAtEmptyCell(grid, 3, isOccupied: occupied),
+        isFalse,
+      );
+    });
+
+    test('blocks floating below-ground empties even when adjacent', () {
+      final grid = _baseCastle(belowThrone: Dungeon());
+      // Index 8 is beside the dungeon but under empty ground — floating.
+      expect(
+        TilePlacement.canAddAtEmptyCell(grid, 8, isOccupied: occupied),
+        isFalse,
+      );
+      expect(TilePlacement.canPlaceTile(grid, 8, Dungeon()), isFalse);
+      expect(TilePlacement.canPlaceTile(grid, 8, GreatHall()), isFalse);
+
+      // Directly under throne / placeholder remains legal.
+      expect(
+        TilePlacement.canAddAtEmptyCell(grid, 10, isOccupied: occupied),
+        isTrue,
+      );
+      expect(TilePlacement.canPlaceTile(grid, 10, Dungeon()), isTrue);
+    });
+
+    test('default canPlaceTile rejects floating below-ground tiles', () {
+      final grid = GridList<Tile>(4, [
+        Empty(), Empty(), Empty(), Empty(),
+        Empty(), ThroneRoomPerCorridorFood(), Placeholder(), Empty(),
+        Dungeon(), Empty(), Empty(), Empty(),
+      ]);
+      // Dungeon at 8 sits under empty — floating basement.
+      expect(
+        TilePlacement.canPlaceTile(grid, 8, Dungeon()),
+        isFalse,
+      );
+      expect(
+        TilePlacement.invalidReasons(grid, 8),
+        contains(PlacementInvalidReason.unsupportedBelowGround),
+      );
+      // Empty at 4 above that dungeon is a structural gap.
+      expect(
+        TilePlacement.invalidReasons(grid, 4),
+        contains(PlacementInvalidReason.structuralGap),
+      );
+
+      // Under the throne is anchored.
+      expect(TilePlacement.canPlaceTile(grid, 9, Dungeon()), isTrue);
+    });
   });
 
   group('TilePlacement invalidReasons', () {
@@ -175,6 +328,22 @@ void main() {
         TilePlacement.invalidReasons(wrongLevel, 9),
         contains(PlacementInvalidReason.wrongTypeForLevel),
       );
+    });
+
+    test('ignores visual bonus/royal row used in scoring view', () {
+      // Same layout as TokenTileGrid.merge: tokens above structural perimeter.
+      final grid = GridList<Tile>(4, [
+        BCPerFood(), RoyalAttendantKnight(), Empty(), Empty(),
+        Empty(), Empty(), Empty(), Empty(),
+        Empty(), ThroneRoomPerCorridorFood(), Placeholder(), Empty(),
+        Empty(), Empty(), Empty(), Empty(),
+      ]);
+      expect(TilePlacement.invalidReasons(grid, 0), isEmpty);
+      expect(TilePlacement.invalidReasons(grid, 1), isEmpty);
+      // Empty cells under the visual token row are not structural gaps.
+      expect(TilePlacement.invalidReasons(grid, 4), isEmpty);
+      expect(TilePlacement.invalidReasons(grid, 5), isEmpty);
+      expect(TilePlacement.hasInvalidPlacement(grid, 0), isFalse);
     });
   });
 
@@ -223,15 +392,54 @@ void main() {
       );
     });
 
-    test('marks empty between rooms in a row', () {
-      final grid = GridList<Tile>(4, [
+    test('marks empty between rooms on the ground row only', () {
+      // Ground: Kitchen | Empty | Throne | PH — horizontal hole is invalid.
+      final groundGap = GridList<Tile>(4, [
         Empty(), Empty(), Empty(), Empty(),
-        Kitchen(), Empty(), GreatHall(), Empty(),
-        Empty(), ThroneRoomPerCorridorFood(), Placeholder(), Empty(),
+        Kitchen(), Empty(), ThroneRoomPerCorridorFood(), Placeholder(),
+        Empty(), Empty(), Empty(), Empty(),
       ]);
+      expect(TilePlacement.isInvalidStructuralGap(groundGap, 5), isTrue);
+
+      // Above ground: supported rooms with a horizontal gap — allowed.
+      final aboveGap = GridList<Tile>(4, [
+        Kitchen(), Empty(), Fountain(), Empty(),
+        GreatHall(), ThroneRoomPerCorridorFood(), Placeholder(), Empty(),
+        Empty(), Empty(), Empty(), Empty(),
+      ]);
+      expect(TilePlacement.isInvalidStructuralGap(aboveGap, 1), isFalse);
+
+      // Below ground: anchored rooms with a horizontal gap — allowed.
+      final belowGap = GridList<Tile>(4, [
+        Empty(), Empty(), Empty(), Empty(),
+        Kitchen(), ThroneRoomPerCorridorFood(), Placeholder(), GreatHall(),
+        Dungeon(), Empty(), Dungeon(), Empty(),
+      ]);
+      expect(TilePlacement.isInvalidStructuralGap(belowGap, 9), isFalse);
+    });
+
+    test('does not mark empty above outdoor as a gap', () {
+      // Throne on row 2; outdoor under column 0; empty directly above outdoor.
+      final outdoorGap = GridList<Tile>(4, [
+        Empty(), Empty(), Empty(), Empty(),
+        Empty(), Empty(), Empty(), Empty(),
+        Biergarten(), ThroneRoomPerCorridorFood(), Placeholder(), Empty(),
+      ]);
+      expect(TilePlacement.isDirectlyAboveOutdoor(outdoorGap, 4), isTrue);
+      expect(TilePlacement.isInvalidStructuralGap(outdoorGap, 4), isFalse);
+      expect(TilePlacement.invalidReasons(outdoorGap, 4), isEmpty);
+
+      // Room two levels up with empty (above outdoor) between it and outdoor.
+      final stacked = GridList<Tile>(4, [
+        Kitchen(), Empty(), Empty(), Empty(),
+        Empty(), Empty(), Empty(), Empty(),
+        Biergarten(), ThroneRoomPerCorridorFood(), Placeholder(), Empty(),
+      ]);
+      expect(TilePlacement.isDirectlyAboveOutdoor(stacked, 4), isTrue);
+      expect(TilePlacement.isInvalidStructuralGap(stacked, 4), isFalse);
       expect(
-        TilePlacement.isInvalidStructuralGap(grid, 5),
-        isTrue,
+        TilePlacement.invalidReasons(stacked, 0),
+        contains(PlacementInvalidReason.unsupportedAboveGround),
       );
     });
 

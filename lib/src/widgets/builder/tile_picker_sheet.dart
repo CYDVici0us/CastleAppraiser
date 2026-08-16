@@ -1,5 +1,7 @@
 import 'package:btcc/src/models/exports.dart';
+import 'package:btcc/src/utils/tile_helper.dart';
 import 'package:btcc/src/utils/tile_placement.dart';
+import 'package:btcc/src/utils/token_tile_grid.dart';
 import 'package:btcc/src/widgets/tile/tile_type_widget.dart';
 import 'package:btcc/src/widgets/tile/tile_widget.dart';
 import 'package:flutter/material.dart';
@@ -50,6 +52,37 @@ Future<Tile?> showTilePickerDialog({
     builder: (context) => TilePickerDialog(
       availableTiles: availableTiles,
       allowedTypes: allowedTypes,
+    ),
+  );
+}
+
+/// Horizontal throne-room picker. Returns the chosen throne, or null if dismissed.
+Future<Tile?> showThroneRoomPickerDialog(BuildContext context) {
+  final trs = TileHelper().getAllThroneRooms();
+  return showDialog<Tile>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('Choose a throne room'),
+          SizedBox(
+            height: TileWidget.defaultTileWidthHeight,
+            width: MediaQuery.of(context).size.width * .8,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: trs.length,
+              itemBuilder: (_, index) => Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                child: InkWell(
+                  child: TileWidget(trs[index]),
+                  onTap: () => Navigator.pop(ctx, trs[index]),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     ),
   );
 }
@@ -128,8 +161,7 @@ class _TileCategoryPage extends StatelessWidget {
                           type: type,
                           tiles: availableTiles
                               .where((t) => t.tileType == type)
-                              .toList()
-                            ..sort((a, b) => a.name.compareTo(b.name)),
+                              .toList(),
                         ),
                       ),
                     );
@@ -147,18 +179,60 @@ class _TileListPage extends StatelessWidget {
 
   const _TileListPage({required this.type, required this.tiles});
 
+  /// Bonus / attendant / special use large cards with readable labels.
+  bool get _useLargePickerCard =>
+      TokenTileGrid.isTokenType(type) || type == TileType.Special;
+
+  List<Tile> get _sortedTiles {
+    final sorted = List<Tile>.from(tiles);
+    if (_useLargePickerCard) {
+      sorted.sort((a, b) => TokenTileGrid.displayName(a)
+          .compareTo(TokenTileGrid.displayName(b)));
+      if (type == TileType.Special) {
+        // One entry per distinct special (Tower×5 / BallRoom×2 duplicates).
+        final seen = <String>{};
+        sorted.retainWhere((t) => seen.add(TokenTileGrid.displayName(t)));
+      }
+    } else {
+      sorted.sort((a, b) => a.name.compareTo(b.name));
+    }
+    return sorted;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final items = _sortedTiles;
     return Scaffold(
       appBar: AppBar(
-        title: Text(tileTypeDisplayName(type)),
+        title: _useLargePickerCard
+            ? Row(
+                children: [
+                  _CategoryLeading(type: type, compact: true),
+                  const SizedBox(width: 10),
+                  Flexible(
+                    child: Text(
+                      tileTypeDisplayName(type),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              )
+            : Text(tileTypeDisplayName(type)),
       ),
-      body: tiles.isEmpty
+      body: items.isEmpty
           ? const Center(child: Text('No tiles in this category'))
           : ListView.builder(
-              itemCount: tiles.length,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              itemCount: items.length,
               itemBuilder: (context, index) {
-                final tile = tiles[index];
+                final tile = items[index];
+                if (_useLargePickerCard) {
+                  return _LargePickerCard(
+                    tile: tile,
+                    onTap: () =>
+                        Navigator.of(context, rootNavigator: true).pop(tile),
+                  );
+                }
                 return ListTile(
                   leading: TileWidget(
                     tile,
@@ -175,15 +249,80 @@ class _TileListPage extends StatelessWidget {
   }
 }
 
-class _CategoryLeading extends StatelessWidget {
-  final TileType type;
+/// Larger picker row for specials / bonus / attendants with readable labels.
+class _LargePickerCard extends StatelessWidget {
+  final Tile tile;
+  final VoidCallback onTap;
 
-  const _CategoryLeading({required this.type});
+  const _LargePickerCard({
+    required this.tile,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final name = TokenTileGrid.displayName(tile);
+    final scoring = TokenTileGrid.scoringDescription(tile);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 14, 14, 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              TileWidget(tile, scale: 1.05),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      name,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (scoring.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        scoring,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.72),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CategoryLeading extends StatelessWidget {
+  final TileType type;
+  final bool compact;
+
+  const _CategoryLeading({
+    required this.type,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = compact ? 0.36 : 0.5;
     if (_tileTypeHasCategoryImage(type)) {
-      return TileTypeWidget(type, scale: 0.5);
+      return TileTypeWidget(type, scale: scale);
     }
 
     // Special / RoyalAttendant / BonusCard have no category scoring image.
@@ -202,10 +341,11 @@ class _CategoryLeading extends StatelessWidget {
         icon = Icons.grid_view;
     }
 
+    final size = TileWidget.defaultTileWidthHeight * scale;
     return SizedBox(
-      width: TileWidget.defaultTileWidthHeight * 0.5,
-      height: TileWidget.defaultTileWidthHeight * 0.5,
-      child: Icon(icon, size: 32),
+      width: size,
+      height: size,
+      child: Icon(icon, size: compact ? 22 : 32),
     );
   }
 }

@@ -6,6 +6,8 @@ class PlayerListItem extends StatelessWidget {
   final int? score;
   final bool isWinner;
   final bool isBench;
+  /// `-1` castle above, `1` castle below, `0` tie, `null` hidden.
+  final int? primaryCastleDirection;
   final VoidCallback? onRename;
   final VoidCallback? onDelete;
   final Key? key;
@@ -15,13 +17,44 @@ class PlayerListItem extends StatelessWidget {
     this.score,
     this.isWinner = false,
     this.isBench = false,
+    this.primaryCastleDirection,
     this.onRename,
     this.onDelete,
     this.key,
   }) : super(key: key);
 
+  Widget? _primaryArrow() {
+    final dir = primaryCastleDirection;
+    if (dir == null) return null;
+
+    if (dir < 0) {
+      return const Tooltip(
+        message: 'Primary score: castle above',
+        child: Icon(Icons.arrow_upward, color: Colors.white, size: 20),
+      );
+    }
+    if (dir > 0) {
+      return const Tooltip(
+        message: 'Primary score: castle below',
+        child: Icon(Icons.arrow_downward, color: Colors.white, size: 20),
+      );
+    }
+    return const Tooltip(
+      message: 'Tied adjacent castle scores',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.arrow_upward, color: Colors.white70, size: 16),
+          Icon(Icons.arrow_downward, color: Colors.white70, size: 16),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final arrow = _primaryArrow();
+
     return Material(
       elevation: 2,
       borderRadius: BorderRadius.circular(12),
@@ -35,7 +68,7 @@ class PlayerListItem extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
-              Icon(Icons.person, color: Colors.white, size: 22),
+              const Icon(Icons.person, color: Colors.white, size: 22),
               const SizedBox(width: 8),
               Expanded(
                 child: AutoSizeText(
@@ -48,6 +81,10 @@ class PlayerListItem extends StatelessWidget {
                   ),
                 ),
               ),
+              if (arrow != null) ...[
+                arrow,
+                const SizedBox(width: 6),
+              ],
               if (score != null)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
@@ -58,7 +95,8 @@ class PlayerListItem extends StatelessWidget {
                 ),
               if (isWinner)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(8),

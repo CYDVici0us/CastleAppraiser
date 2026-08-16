@@ -4,10 +4,12 @@ import 'package:btcc/src/state/data_store.dart';
 import 'package:btcc/src/utils/navigation_helper.dart';
 import 'package:btcc/src/utils/tile_helper.dart';
 import 'package:btcc/src/widgets/background_container.dart';
+import 'package:btcc/src/widgets/builder/tile_picker_sheet.dart';
 import 'package:btcc/src/widgets/button_padding.dart';
 import 'package:btcc/src/widgets/edit_text_dialog.dart';
 import 'package:btcc/src/widgets/flow_breadcrumb.dart';
 import 'package:btcc/src/widgets/game/editable_game_list.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -174,6 +176,25 @@ class _GameEditScreenState extends State<GameEditScreen> {
     );
   }
 
+  Future<void> _onBuildCastle() async {
+    final TileId throneId;
+    if (kDebugMode) {
+      throneId = TileId.ThroneRoomPerCorridorDownstairs;
+    } else {
+      final chosen = await showThroneRoomPickerDialog(context);
+      if (chosen == null || !mounted) return;
+      throneId = chosen.id;
+    }
+
+    if (!mounted) return;
+    NavigationHelper.goToCastleBuilderScreen(
+      context,
+      castleTiles: TileHelper().getStartingGridList(throneId),
+      addCastleCallback: _addCastle,
+      gameTitle: game?.title ?? 'New Game',
+    );
+  }
+
   void _openCastle(Castle castle) {
     NavigationHelper.goToCastleScreen(
       context,
@@ -196,7 +217,8 @@ class _GameEditScreenState extends State<GameEditScreen> {
   }
 
   Color _getCastleItemColor(Castle castle) {
-    return Colors.blueGrey.shade600;
+    // Neutral charcoal so tile art stays readable (avoid blue-grey behind empties).
+    return const Color(0xFF3A3A3A);
   }
 
   Widget _getCastleList() => EditableGameList(
@@ -277,11 +299,7 @@ class _GameEditScreenState extends State<GameEditScreen> {
                   heroTag: '2',
                   label: Text('Build castle'),
                   icon: Icon(Icons.build),
-                  onPressed: () => NavigationHelper.goToCastleBuilderScreen(context, 
-                    castleTiles: TileHelper().getStartingGridList(TileId.ThroneRoomPerCorridorDownstairs),
-                    addCastleCallback: _addCastle,
-                    gameTitle: game?.title ?? 'New Game',
-                  ),
+                  onPressed: _onBuildCastle,
                 ),
                 Flexible(
                   child: Container(),

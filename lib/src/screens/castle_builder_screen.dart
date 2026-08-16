@@ -2,7 +2,6 @@ import 'package:btcc/src/utils/log.dart';
 import 'package:btcc/src/analytics/analytics.dart';
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/utils/grid_expander.dart';
-import 'package:btcc/src/utils/navigation_helper.dart';
 import 'package:btcc/src/utils/tile_helper.dart';
 import 'package:btcc/src/utils/tile_placement.dart';
 import 'package:btcc/src/utils/token_tile_grid.dart';
@@ -47,28 +46,54 @@ class CastleBuilderScreen extends StatefulWidget {
   _CastleBuilderScreenState createState() => new _CastleBuilderScreenState();
 }
 
-class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
-  late TextEditingController _textEditingController;
-
+class _CastleBuilderScreenState extends State<CastleBuilderScreen>
+    with SingleTickerProviderStateMixin {
   String _filterText = '';
   List<Tile> _allTiles = [];
   late GridList<Tile> _castleTiles;
   /// Bonus cards + royal attendants (not on the structural map).
   List<Tile> _tokenTiles = [];
   int? _selectedTokenIndex;
+  /// Tile picked from the search row (short press).
+  Tile? _selectedSearchTile;
+  bool _tokenStripExpanded = false;
   DraggedTileInfo? _draggingTile;
   late Castle _castle;
   int? _selectedIndex;
+  /// Index shown in the selection panel (kept during close animation).
+  int? _panelIndex;
   /// Set while a grid tile is being dragged (cell already emptied).
   int? _gridDragSourceIndex;
+  bool _isSaving = false;
+  late final AnimationController _panelController;
+  late final Animation<Offset> _panelSlide;
+
+  static const int _minSearchLength = 3;
+  static const Duration _panelAnimDuration = Duration(milliseconds: 280);
 
   static bool _isOccupied(Tile tile) => !tile.isEmpty();
+
+  bool get _hasSearchTerm => _filterText.trim().isNotEmpty;
+  bool get _canShowSearchResults =>
+      _filterText.trim().length >= _minSearchLength;
 
   @override
   void initState() {
     super.initState();
 
-    _textEditingController = new TextEditingController();
+    _panelController = AnimationController(
+      vsync: this,
+      duration: _panelAnimDuration,
+    );
+    _panelSlide = Tween<Offset>(
+      begin: const Offset(0, 0.2),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _panelController,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    ));
+
     final extracted = TokenTileGrid.extractTokenTiles(
       widget.castleTiles,
       getEmpty: () => Empty(),
@@ -80,13 +105,14 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
       getEmpty: () => Empty(),
     );
     _castleTiles = normalized.grid;
+    _tokenStripExpanded = _tokenTiles.isNotEmpty;
     _refreshAvailableTiles();
     _syncCastleFromParts();
   }
 
   @override
   void dispose() {
-    _textEditingController.dispose();
+    _panelController.dispose();
     super.dispose();
   }
 
@@ -107,30 +133,17 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
     ]);
   }
 
-  bool _canAddAt(int index) {
-    if (TilePlacement.isDirectlyAboveOutdoor(_castleTiles, index)) {
-      return false;
-    }
-    if (GridListNormalizer.canPlaceAdjacent(
-      _castleTiles,
-      index,
-      isOccupied: _isOccupied,
-    )) {
-      return true;
-    }
-    // Holes left after removing a room inside the castle footprint.
-    return GridListNormalizer.isEmptyInsideOccupiedBounds(
-      _castleTiles,
-      index,
-      isOccupied: _isOccupied,
-    );
-  }
+  bool _canAddAt(int index) => TilePlacement.canAddAtEmptyCell(
+        _castleTiles,
+        index,
+        isOccupied: _isOccupied,
+      );
 
   bool _canPlaceTileAt(
     int index,
     Tile tile, {
     bool allowAboveOutdoor = false,
-    bool requireSupport = false,
+    bool requireSupport = true,
   }) =>
       TilePlacement.canPlaceTile(
         _castleTiles,
@@ -190,7 +203,10 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
           _canAddAt(index) &&
           _canPlaceTileAt(index, tile);
     }
-    return _canPlaceTileAt(index, tile);
+    // Drop from the search/list tray onto an empty legal cell.
+    return _castleTiles.items[index].isEmpty() &&
+        _canAddAt(index) &&
+        _canPlaceTileAt(index, tile);
   }
 
   GridNormalizeResult<Tile> _normalize(GridList<Tile> grid) =>
@@ -208,15 +224,48 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
     });
   }
 
+  void _clearSearchState() {
+    _filterText = '';
+    _selectedSearchTile = null;
+  }
+
+  void _selectGridCell(int index) {
+    final opening = _panelController.value == 0;
+    setState(() {
+      _selectedIndex = index;
+      _panelIndex = index;
+      _selectedTokenIndex = null;
+      _clearSearchState();
+    });
+    if (opening) {
+      _panelController.forward();
+    }
+  }
+
   void _onTapCell(int index) {
     final tile = _castleTiles.items[index];
     if (tile.tileType == TileType.Placeholder) {
       return;
     }
+    _selectGridCell(index);
+  }
+
+  Future<void> _clearGridSelection() async {
+    if (_panelIndex == null && _panelController.isDismissed) return;
+    await _panelController.reverse();
+    if (!mounted) return;
     setState(() {
-      _selectedIndex = index;
-      _selectedTokenIndex = null;
+      _selectedIndex = null;
+      _panelIndex = null;
+      _clearSearchState();
     });
+  }
+
+  void _dismissGridSelectionImmediate() {
+    _panelController.value = 0;
+    _selectedIndex = null;
+    _panelIndex = null;
+    _clearSearchState();
   }
 
   Future<void> _openTilePickerForSelected() async {
@@ -251,7 +300,6 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
     var copy = _castleTiles;
     copy.items[index] = tile;
     final normalized = _normalize(copy);
-    final mapped = normalized.mapIndex(index);
 
     setState(() {
       _castleTiles = normalized.grid;
@@ -259,9 +307,16 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
       _gridDragSourceIndex = null;
       _refreshAvailableTiles();
       _syncCastleFromParts();
-      _selectedIndex = mapped;
       _selectedTokenIndex = null;
+      _dismissGridSelectionImmediate();
     });
+  }
+
+  void _applySelectedSearchTile() {
+    final index = _selectedIndex;
+    final tile = _selectedSearchTile;
+    if (index == null || tile == null) return;
+    _placeTileAt(index, tile);
   }
 
   void _removeSelectedTile() {
@@ -283,7 +338,9 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
       _refreshAvailableTiles();
       _syncCastleFromParts();
       _selectedIndex = mapped;
+      _panelIndex = mapped;
       _selectedTokenIndex = null;
+      _clearSearchState();
     });
   }
 
@@ -298,26 +355,16 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
         source,
         index,
         item,
-        canAddAt: (i) {
-          if (TilePlacement.isDirectlyAboveOutdoor(copy, i)) return false;
-          if (GridListNormalizer.canPlaceAdjacent(
-            copy,
-            i,
-            isOccupied: _isOccupied,
-          )) {
-            return true;
-          }
-          return GridListNormalizer.isEmptyInsideOccupiedBounds(
-            copy,
-            i,
-            isOccupied: _isOccupied,
-          );
-        },
+        canAddAt: (i) => TilePlacement.canAddAtEmptyCell(
+          copy,
+          i,
+          isOccupied: _isOccupied,
+        ),
         canPlaceTile: (i, t) => TilePlacement.canPlaceTile(
           copy,
           i,
           t,
-          requireSupport: false,
+          requireSupport: true,
         ),
         getEmpty: () => Empty(),
       );
@@ -333,8 +380,8 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
           _gridDragSourceIndex = null;
           _refreshAvailableTiles();
           _syncCastleFromParts();
-          _selectedIndex = null;
           _selectedTokenIndex = null;
+          _dismissGridSelectionImmediate();
         });
         return;
       }
@@ -348,6 +395,18 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
         copy.items[index + 1] = Placeholder();
       }
     } else {
+      // Free drop (from tray or off-axis): must be an empty legal cell.
+      if (source == null || !TilePlacement.isOrthogonal(copy, source, index)) {
+        if (!copy.items[index].isEmpty() ||
+            !_canAddAt(index) ||
+            !_canPlaceTileAt(index, item)) {
+          setState(() {
+            _draggingTile = null;
+            _gridDragSourceIndex = null;
+          });
+          return;
+        }
+      }
       copy.items[index] = item;
       if (source != null) {
         TilePlacement.compactTowardGround(copy, getEmpty: () => Empty());
@@ -361,15 +420,36 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
       _gridDragSourceIndex = null;
       _refreshAvailableTiles();
       _syncCastleFromParts();
-      _selectedIndex = null;
       _selectedTokenIndex = null;
+      _dismissGridSelectionImmediate();
     });
   }
 
   Future<void> _openTokenPicker({int? replaceIndex}) async {
+    final replacing = (replaceIndex != null &&
+            replaceIndex >= 0 &&
+            replaceIndex < _tokenTiles.length)
+        ? _tokenTiles[replaceIndex]
+        : null;
+
+    if (replacing == null && !TokenTileGrid.canAddAnyToken(_tokenTiles)) {
+      return;
+    }
+
+    final inventory = TileHelper().getListOfTilesExcludingTilesAndTrs([
+      ..._castleTiles.items,
+      ..._tokenTiles.where((t) => replacing == null || t.id != replacing.id),
+    ]);
+    final available = TokenTileGrid.filterTokenPickerTiles(
+      inventory: inventory,
+      currentTokens: _tokenTiles,
+      replacing: replacing,
+    );
+    if (available.isEmpty) return;
+
     final chosen = await showTilePickerDialog(
       context: context,
-      availableTiles: List<Tile>.from(_allTiles),
+      availableTiles: available,
       allowedTypes: TokenTileGrid.stripPickerTypes,
     );
     if (chosen == null || !mounted) return;
@@ -384,7 +464,8 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
         _tokenTiles.add(chosen);
       }
       _selectedTokenIndex = replaceIndex ?? _tokenTiles.length - 1;
-      _selectedIndex = null;
+      _tokenStripExpanded = true;
+      _dismissGridSelectionImmediate();
       _refreshAvailableTiles();
       _syncCastleFromParts();
     });
@@ -396,49 +477,23 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
     setState(() {
       _tokenTiles.removeAt(index);
       _selectedTokenIndex = null;
+      if (_tokenTiles.isEmpty) {
+        _tokenStripExpanded = false;
+      }
       _refreshAvailableTiles();
       _syncCastleFromParts();
     });
   }
 
-  void _showThroneRoomPicker() {
-    var trs = TileHelper().getAllThroneRooms();
-
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Choose a throne room'),
-            Container(
-              height: TileWidget.defaultTileWidthHeight,
-              width: MediaQuery.of(context).size.width * .8,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: trs.length,
-                itemBuilder: (ctx, index) => Container(
-                  padding: EdgeInsets.symmetric(horizontal: 10.0),
-                  child: InkWell(
-                    child: TileWidget(
-                      trs[index],
-                    ),
-                    onTap: () {
-                      var copy = _castleTiles;
-                      int i = copy.items.indexWhere(
-                          (element) => element.tileType == TileType.ThroneRoom);
-                      copy.items.replaceRange(i, i + 1, [trs[index]]);
-                      _updateCastle(copy);
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                ),
-              ),
-            )
-          ],
-        ),
-      ),
-    );
+  void _showThroneRoomPicker() async {
+    final chosen = await showThroneRoomPickerDialog(context);
+    if (chosen == null || !mounted) return;
+    var copy = _castleTiles;
+    int i = copy.items.indexWhere(
+        (element) => element.tileType == TileType.ThroneRoom);
+    if (i < 0) return;
+    copy.items.replaceRange(i, i + 1, [chosen]);
+    _updateCastle(copy);
   }
 
   static String _enumLabel(Object value) => value.toString().split('.').last;
@@ -484,74 +539,96 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
   Widget _getSelectedTileDetails(int index, Tile tile) {
     final theme = Theme.of(context);
     final isEmpty = tile.isEmpty();
-    final summary = _tileScoringSummary(tile);
+    final title = isEmpty
+        ? 'Empty cell'
+        : tile.tileType == TileType.Special
+            ? TokenTileGrid.displayName(tile)
+            : tile.name;
+    final scoringText = tile.tileType == TileType.Special
+        ? TokenTileGrid.scoringDescription(tile)
+        : _tileScoringSummary(tile);
     final invalids = TilePlacement.invalidReasons(_castleTiles, index);
+    final imageScale = tile.isThroneRoom() ? 1.05 : 1.35;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TileWidget(
-            tile,
-            scale: tile.isThroneRoom() ? 0.35 : 0.5,
-            showOutline: true,
-            showInvalidBadge: invalids.isNotEmpty,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const Spacer(),
+            IconButton(
+              tooltip: 'Clear selection',
+              icon: const Icon(Icons.close),
+              visualDensity: VisualDensity.compact,
+              onPressed: _clearGridSelection,
+            ),
+          ],
+        ),
+        if (!isEmpty) ...[
+          Center(
+            child: TileWidget(
+              tile,
+              scale: imageScale,
+              showOutline: true,
+              showInvalidBadge: invalids.isNotEmpty,
+            ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isEmpty ? 'Empty cell' : tile.name,
-                  style: theme.textTheme.titleMedium,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (!isEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    tileTypeDisplayName(tile.tileType),
-                    style: theme.textTheme.bodySmall,
-                  ),
-                  if (summary != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      summary,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ] else
-                  Text(
-                    _canAddAt(index)
-                        ? 'Tap Add to place a tile'
-                        : 'Cannot place a tile here',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                for (final reason in invalids) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'Invalid: ${TilePlacement.describeInvalidReason(reason)}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.error,
-                    ),
-                  ),
-                ],
-              ],
+          const SizedBox(height: 12),
+        ],
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        if (!isEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            tileTypeDisplayName(tile.tileType),
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+            ),
+          ),
+          if (scoringText != null && scoringText.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              scoringText,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
+            ),
+          ],
+        ] else ...[
+          const SizedBox(height: 4),
+          Text(
+            _canAddAt(index)
+                ? 'Search or tap + New Tile to place'
+                : 'Cannot place a tile here',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium,
+          ),
+        ],
+        for (final reason in invalids) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Invalid: ${TilePlacement.describeInvalidReason(reason)}',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.error,
             ),
           ),
         ],
-      ),
+      ],
     );
   }
 
   Widget _getSelectionActionBar() {
-    final index = _selectedIndex;
+    final index = _panelIndex ?? _selectedIndex;
     if (index == null || index < 0 || index >= _castleTiles.items.length) {
       return const SizedBox.shrink();
     }
@@ -561,30 +638,53 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
     final isThrone = tile.tileType == TileType.ThroneRoom;
     final isMovable = tile.isMovable();
     final canAdd = isEmpty && _canAddAt(index);
+    final searchTile = _selectedSearchTile;
+    final canApplySearch = searchTile != null &&
+        (isEmpty
+            ? canAdd && _canPlaceTileAt(index, searchTile)
+            : isMovable &&
+                _canPlaceTileAt(
+                  index,
+                  searchTile,
+                  allowAboveOutdoor: true,
+                  requireSupport: false,
+                ));
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+      padding: const EdgeInsets.fromLTRB(10, 12, 10, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _getSelectedTileDetails(index, tile),
-          Row(
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              if (canAdd)
+              if (canApplySearch)
+                FloatingActionButton.extended(
+                  heroTag: 'apply_search_tile',
+                  icon: Icon(isEmpty ? Icons.add : Icons.edit),
+                  label: Text(
+                      isEmpty ? 'Add selected tile' : 'Update selected tile'),
+                  onPressed: _applySelectedSearchTile,
+                ),
+              if (canAdd && !_hasSearchTerm)
                 FloatingActionButton.extended(
                   heroTag: 'add_tile',
                   icon: const Icon(Icons.add),
-                  label: const Text('Add'),
+                  label: const Text('New Tile'),
                   onPressed: _openTilePickerForSelected,
                 ),
               if (isMovable) ...[
-                FloatingActionButton.extended(
-                  heroTag: 'update_tile',
-                  icon: const Icon(Icons.edit),
-                  label: const Text('Update'),
-                  onPressed: _openTilePickerForSelected,
-                ),
-                const SizedBox(width: 8),
+                if (!_hasSearchTerm)
+                  FloatingActionButton.extended(
+                    heroTag: 'update_tile',
+                    icon: const Icon(Icons.edit),
+                    label: const Text('Update'),
+                    onPressed: _openTilePickerForSelected,
+                  ),
                 FloatingActionButton.extended(
                   heroTag: 'remove_tile',
                   icon: const Icon(Icons.delete),
@@ -599,90 +699,294 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
                   label: const Text('Update'),
                   onPressed: _showThroneRoomPicker,
                 ),
-              const Spacer(),
-              IconButton(
-                tooltip: 'Clear selection',
-                icon: const Icon(Icons.close),
-                onPressed: () {
-                  setState(() {
-                    _selectedIndex = null;
-                  });
-                },
-              ),
             ],
           ),
+          const SizedBox(height: 10),
         ],
       ),
+    );
+  }
+
+  Widget _getSelectionSearch() {
+    final index = _panelIndex ?? _selectedIndex;
+    if (index == null || index < 0 || index >= _castleTiles.items.length) {
+      return const SizedBox.shrink();
+    }
+
+    final tile = _castleTiles.items[index];
+    // Search is only for placing/replacing — hide when nothing can be placed here.
+    final canSearch = tile.isMovable() || (tile.isEmpty() && _canAddAt(index));
+    if (!canSearch) {
+      return const SizedBox.shrink();
+    }
+
+    return FilteredDragAndDropListView<Tile>(
+      key: ValueKey('tile-search-$index'),
+      hintText: 'Search tiles',
+      containerColor: Colors.transparent,
+      textBackgroundColor: Colors.blueGrey.shade700,
+      onAcceptWithDetails:
+          (DragTargetDetails details, ScrollController controller) {
+        if (_draggingTile != null) {
+          log('OnAcceptWithDetails from listview drag: ${details.offset}');
+          var copy = _allTiles;
+          copy.insert(_draggingTile!.index, _draggingTile!.tile);
+          setState(() {
+            _draggingTile = null;
+            _allTiles = copy;
+          });
+        } else {
+          log('OnAcceptWithDetails from grid: ${details.offset}');
+
+          int scrollOffsetIndex =
+              controller.offset ~/ TileWidget.defaultTileWidthHeight;
+          int dragOffsetIndex =
+              details.offset.dx ~/ TileWidget.defaultTileWidthHeight + 1;
+          int roughIndex =
+              min(_allTiles.length, scrollOffsetIndex + dragOffsetIndex);
+
+          var copy = _allTiles;
+          copy.insert(roughIndex, details.data);
+          final normalized = _normalize(_castleTiles);
+          setState(() {
+            _allTiles = copy;
+            _castleTiles = normalized.grid;
+            _syncCastleFromParts();
+            _gridDragSourceIndex = null;
+          });
+        }
+      },
+      onClearPressed: () {
+        setState(() {
+          _clearSearchState();
+        });
+      },
+      onTextChanged: (String value) {
+        setState(() {
+          _filterText = value;
+          if (value.trim().length < _minSearchLength) {
+            _selectedSearchTile = null;
+          } else if (_selectedSearchTile != null &&
+              !_getFilteredTiles()
+                  .any((t) => t.id == _selectedSearchTile!.id)) {
+            _selectedSearchTile = null;
+          }
+        });
+      },
+      children: _getFilteredListViewChildren(),
+    );
+  }
+
+  Widget _getSelectionPanel() {
+    final theme = Theme.of(context);
+    final index = _panelIndex;
+    if (index == null || index < 0 || index >= _castleTiles.items.length) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.95),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: theme.colorScheme.outline,
+            width: 1.5,
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10.5),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.48,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _getSelectionActionBar(),
+                  _getSelectionSearch(),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _getAnimatedSelectionPanel() {
+    return AnimatedBuilder(
+      animation: _panelController,
+      builder: (context, child) {
+        if (_panelController.value == 0 && _panelIndex == null) {
+          return const SizedBox.shrink();
+        }
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.topCenter,
+            heightFactor: _panelController.value,
+            child: SlideTransition(
+              position: _panelSlide,
+              child: IgnorePointer(
+                ignoring: _panelController.status == AnimationStatus.reverse,
+                child: child,
+              ),
+            ),
+          ),
+        );
+      },
+      child: _getSelectionPanel(),
     );
   }
 
   Widget _getTokenStrip() {
     final theme = Theme.of(context);
     final selected = _selectedTokenIndex;
+    final count = _tokenTiles.length;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Bonus & Royal attendants',
-            style: theme.textTheme.titleSmall,
-          ),
-          const SizedBox(height: 4),
-          SizedBox(
-            height: TileWidget.defaultTileWidthHeight * 0.65 + 8,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: _tokenTiles.length + 1,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                if (index == _tokenTiles.length) {
-                  return InkWell(
-                    onTap: () => _openTokenPicker(),
-                    child: Container(
-                      width: TileWidget.defaultTileWidthHeight * 0.65,
-                      height: TileWidget.defaultTileWidthHeight * 0.65,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey),
-                        color: Colors.black26,
-                      ),
-                      child: const Icon(Icons.add, color: Colors.white70),
-                    ),
-                  );
-                }
-
-                final tile = _tokenTiles[index];
-                final isSelected = selected == index;
-                return InkWell(
-                  onTap: () {
-                    setState(() {
-                      _selectedTokenIndex = index;
-                      _selectedIndex = null;
-                    });
-                  },
-                  child: Container(
-                    foregroundDecoration: isSelected
-                        ? BoxDecoration(
-                            border: Border.all(
-                              width: 3,
-                              color: Colors.lightBlueAccent,
-                            ),
-                          )
-                        : null,
-                    child: TileWidget(tile, scale: 0.65, showOutline: true),
-                  ),
-                );
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+      child: Material(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () {
+                setState(() {
+                  _tokenStripExpanded = !_tokenStripExpanded;
+                });
               },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.style_outlined,
+                      size: 20,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Bonus & Royal attendants',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    if (count > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          '$count',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      _tokenStripExpanded
+                          ? Icons.expand_less
+                          : Icons.expand_more,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
-          if (selected != null &&
-              selected >= 0 &&
-              selected < _tokenTiles.length) ...[
-            const SizedBox(height: 6),
-            _getSelectedTokenDetails(_tokenTiles[selected], selected),
+            if (_tokenStripExpanded) ...[
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      height: TileWidget.defaultTileWidthHeight * 0.65,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _tokenTiles.length +
+                            (TokenTileGrid.canAddAnyToken(_tokenTiles) ? 1 : 0),
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, index) {
+                          if (index == _tokenTiles.length) {
+                            return InkWell(
+                              onTap: () => _openTokenPicker(),
+                              child: Container(
+                                width: TileWidget.defaultTileWidthHeight * 0.65,
+                                height: TileWidget.defaultTileWidthHeight * 0.65,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: theme.colorScheme.outlineVariant,
+                                  ),
+                                  color: theme.colorScheme.surface.withValues(
+                                    alpha: 0.35,
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.add,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            );
+                          }
+
+                          final tile = _tokenTiles[index];
+                          final isSelected = selected == index;
+                          return InkWell(
+                            onTap: () {
+                              setState(() {
+                                _selectedTokenIndex = index;
+                                _dismissGridSelectionImmediate();
+                              });
+                            },
+                            child: Container(
+                              foregroundDecoration: isSelected
+                                  ? BoxDecoration(
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        width: 2,
+                                        color: Colors.lightBlueAccent,
+                                      ),
+                                    )
+                                  : null,
+                              child: TileWidget(
+                                tile,
+                                scale: 0.65,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    if (selected != null &&
+                        selected >= 0 &&
+                        selected < _tokenTiles.length) ...[
+                      const SizedBox(height: 6),
+                      _getSelectedTokenDetails(_tokenTiles[selected], selected),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -692,59 +996,75 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
     final title = TokenTileGrid.displayName(tile);
     final typeLabel = tileTypeDisplayName(tile.tileType);
     final scoring = TokenTileGrid.scoringDescription(tile);
+    final imageScale =
+        (MediaQuery.of(context).size.width * 0.42) /
+            TileWidget.defaultTileWidthHeight;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TileWidget(tile, scale: 0.5, showOutline: true),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: theme.textTheme.titleMedium,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 2),
-              Text(typeLabel, style: theme.textTheme.bodySmall),
-              if (scoring.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(
-                  scoring,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-              Row(
-                children: [
-                  TextButton(
-                    onPressed: () => _openTokenPicker(replaceIndex: selected),
-                    child: const Text('Update'),
-                  ),
-                  TextButton(
-                    onPressed: _removeSelectedToken,
-                    child: const Text('Remove'),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    tooltip: 'Clear selection',
-                    icon: const Icon(Icons.close),
-                    onPressed: () {
-                      setState(() {
-                        _selectedTokenIndex = null;
-                      });
-                    },
-                  ),
-                ],
-              ),
-            ],
+        Row(
+          children: [
+            const Spacer(),
+            IconButton(
+              tooltip: 'Clear selection',
+              icon: const Icon(Icons.close),
+              visualDensity: VisualDensity.compact,
+              onPressed: () {
+                setState(() {
+                  _selectedTokenIndex = null;
+                });
+              },
+            ),
+          ],
+        ),
+        Center(
+          child: TileWidget(
+            tile,
+            scale: imageScale.clamp(1.2, 2.0),
           ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          typeLabel,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+          ),
+        ),
+        if (scoring.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            scoring,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+            ),
+          ),
+        ],
+        const SizedBox(height: 4),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            TextButton(
+              onPressed: () => _openTokenPicker(replaceIndex: selected),
+              child: const Text('Update'),
+            ),
+            TextButton(
+              onPressed: _removeSelectedToken,
+              child: const Text('Remove'),
+            ),
+          ],
         ),
       ],
     );
@@ -795,8 +1115,8 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
             _syncCastleFromParts();
             _draggingTile = DraggedTileInfo(index, item);
             _gridDragSourceIndex = index;
-            _selectedIndex = null;
             _selectedTokenIndex = null;
+            _dismissGridSelectionImmediate();
           });
         },
         onExpandCollapse: (result) {
@@ -829,158 +1149,162 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
       );
 
   List<Tile> _getFilteredTiles() {
-    String text = _filterText.toLowerCase();
-    List<Tile> filtered = _allTiles
-        .where((element) => element.name.toLowerCase().contains(text))
-        .toList();
-    return filtered;
+    if (!_canShowSearchResults) return const [];
+    final text = _filterText.trim().toLowerCase();
+    final selected = _panelIndex ?? _selectedIndex;
+    final allowed =
+        selected != null ? _allowedTypesForIndex(selected) : null;
+    return _allTiles.where((element) {
+      if (!element.name.toLowerCase().contains(text)) return false;
+      if (allowed != null && !allowed.contains(element.tileType)) return false;
+      if (selected != null) {
+        final existing = _castleTiles.items[selected];
+        final ok = existing.isEmpty()
+            ? _canPlaceTileAt(selected, element)
+            : _canPlaceTileAt(
+                selected,
+                element,
+                allowAboveOutdoor: true,
+                requireSupport: false,
+              );
+        if (!ok) return false;
+      }
+      return true;
+    }).toList();
   }
 
   List<Widget> _getFilteredListViewChildren() {
-    var filtered = _getFilteredTiles();
+    final filtered = _getFilteredTiles();
+    final selectedId = _selectedSearchTile?.id;
     return filtered
-        .map((tile) => LongPressDraggable(
-              delay: DragAndDropGrid.dragDelay,
-              data: tile,
-              feedback: TileWidget(tile),
+        .map((tile) {
+          final isSelected = selectedId == tile.id;
+          return LongPressDraggable<Tile>(
+            delay: DragAndDropGrid.dragDelay,
+            data: tile,
+            feedback: TileWidget(tile),
+            childWhenDragging: Opacity(
+              opacity: 0.35,
               child: TileWidget(tile),
-              childWhenDragging: TileWidget(tile),
-              onDragStarted: () {
-                log('alltiles length ${_allTiles.length}');
-                var copy = _allTiles;
-                int index = copy.indexWhere((element) => element.id == tile.id);
-                log('OnDragStarted from list view: $index');
-                copy.removeAt(index);
-                log('copy length ${copy.length}');
+            ),
+            onDragStarted: () {
+              log('alltiles length ${_allTiles.length}');
+              var copy = _allTiles;
+              int index = copy.indexWhere((element) => element.id == tile.id);
+              log('OnDragStarted from list view: $index');
+              copy.removeAt(index);
+              log('copy length ${copy.length}');
+              setState(() {
+                _allTiles = copy;
+                _draggingTile = DraggedTileInfo(index, tile);
+                _selectedSearchTile = null;
+              });
+            },
+            onDraggableCanceled: (velocity, offset) {
+              log('OnDragCancelled from list view: ${_draggingTile!.index}');
+              var copy = _allTiles;
+              copy.insert(_draggingTile!.index, _draggingTile!.tile);
+              setState(() {
+                _draggingTile = null;
+                _allTiles = copy;
+              });
+            },
+            child: GestureDetector(
+              onTap: () {
                 setState(() {
-                  _allTiles = copy;
-                  _draggingTile = new DraggedTileInfo(index, tile);
+                  _selectedSearchTile =
+                      isSelected ? null : tile;
                 });
               },
-              onDraggableCanceled: (velocity, offset) {
-                log('OnDragCancelled from list view: ${_draggingTile!.index}');
-                var copy = _allTiles;
-                copy.insert(_draggingTile!.index, _draggingTile!.tile);
-                setState(() {
-                  _draggingTile = null;
-                  _allTiles = copy;
-                });
-              },
-            ))
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                foregroundDecoration: isSelected
+                    ? BoxDecoration(
+                        border: Border.all(
+                          width: 3,
+                          color: Colors.lightBlueAccent,
+                        ),
+                      )
+                    : null,
+                child: TileWidget(tile),
+              ),
+            ),
+          );
+        })
         .toList();
   }
 
-  Widget _getChangeThroneRoomButton() => FloatingActionButton.extended(
-        heroTag: 'tr',
-        label: Text('Set Throneroom'),
-        onPressed: _showThroneRoomPicker,
+  Future<void> _persistCastle() async {
+    var castle = Castle(_mergedGrid());
+    if (widget.updateCastleCallback != null &&
+        widget.existingCastle != null) {
+      castle.hiveCastle = widget.existingCastle!.hiveCastle;
+      castle.title = widget.existingCastle!.title;
+      await widget.updateCastleCallback!(castle);
+      await Analytics.logCastleSavedFromCastleBuilder(widget.numPicturesTaken);
+      return;
+    }
+
+    if (widget.addCastleCallback != null) {
+      await widget.addCastleCallback!(
+          castle, widget.imagePath ?? '', widget.numPicturesTaken);
+      await Analytics.logCastleSavedFromCastleBuilder(widget.numPicturesTaken);
+    }
+  }
+
+  Future<void> _saveAndPop() async {
+    if (_isSaving) return;
+    _isSaving = true;
+    try {
+      await _persistCastle();
+      if (mounted) Navigator.pop(context);
+    } finally {
+      _isSaving = false;
+    }
+  }
+
+  void _cancelChanges() {
+    Navigator.pop(context);
+  }
+
+  Widget _getCancelButton() => FloatingActionButton.extended(
+        heroTag: 'cancel',
+        icon: Icon(Icons.cancel_outlined),
+        label: Text('Cancel changes'),
+        onPressed: _isSaving ? null : _cancelChanges,
       );
 
-  Widget _getSaveButton() => FloatingActionButton.extended(
-        heroTag: 'save',
-        icon: Icon(Icons.save),
-        label: Text('Save'),
-        onPressed: () async {
-          var castle = Castle(_mergedGrid());
-          if (widget.updateCastleCallback != null &&
-              widget.existingCastle != null) {
-            castle.hiveCastle = widget.existingCastle!.hiveCastle;
-            castle.title = widget.existingCastle!.title;
-            await widget.updateCastleCallback!(castle);
-            await Analytics.logCastleSavedFromCastleBuilder(
-                widget.numPicturesTaken);
-            Navigator.pop(context);
-            return;
-          }
-
-          if (widget.addCastleCallback != null) {
-            await widget.addCastleCallback!(
-                castle, widget.imagePath ?? '', widget.numPicturesTaken);
-            await Analytics.logCastleSavedFromCastleBuilder(
-                widget.numPicturesTaken);
-            Navigator.pop(context);
-          }
-        },
+  Widget _getSaveAndCloseButton() => FloatingActionButton.extended(
+        heroTag: 'save_close',
+        icon: Icon(Icons.arrow_back),
+        label: Text('Save and close'),
+        onPressed: _isSaving ? null : _saveAndPop,
       );
 
-  Widget _getBottomButtonRow() => Row(
-        children: [
-          FloatingActionButton.extended(
-            heroTag: 'score',
-            label: Text('Score'),
-            icon: Icon(Icons.view_list),
-            onPressed: () {
-              _syncCastleFromParts();
-              _castle.scoreCastle([]);
-              NavigationHelper.goToCastleScreen(context, _castle,
-                  onlyShowScoreCard: true);
-            },
-          ),
-          Flexible(
-            child: Container(),
-          ),
-          _getChangeThroneRoomButton(),
-          Flexible(
-            child: Container(),
-          ),
-          _getSaveButton(),
-        ],
+  Widget _getBottomButtonRow() => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            _getSaveAndCloseButton(),
+            Flexible(
+              child: Container(),
+            ),
+            _getCancelButton(),
+          ],
+        ),
       );
 
-  Widget _getBottomSheet() => Column(
-        children: [
-          _getSelectionActionBar(),
-          FilteredDragAndDropListView<Tile>(
-            hintText: 'Filter by tile name',
-            onAcceptWithDetails:
-                (DragTargetDetails details, ScrollController controller) {
-              if (_draggingTile != null) {
-                log(
-                    'OnAcceptWithDetails from listview drag: ${details.offset}');
-                var copy = _allTiles;
-                copy.insert(_draggingTile!.index, _draggingTile!.tile);
-                setState(() {
-                  _draggingTile = null;
-                  _allTiles = copy;
-                });
-              } else {
-                log('OnAcceptWithDetails from grid: ${details.offset}');
-
-                int scrollOffsetIndex =
-                    controller.offset ~/ TileWidget.defaultTileWidthHeight;
-                int dragOffsetIndex =
-                    details.offset.dx ~/ TileWidget.defaultTileWidthHeight + 1;
-                int roughIndex =
-                    min(_allTiles.length, scrollOffsetIndex + dragOffsetIndex);
-
-                var copy = _allTiles;
-                copy.insert(roughIndex, details.data);
-                final normalized = _normalize(_castleTiles);
-                setState(() {
-                  _allTiles = copy;
-                  _castleTiles = normalized.grid;
-                  _syncCastleFromParts();
-                  _gridDragSourceIndex = null;
-                });
-              }
-            },
-            onClearPressed: () {
-              setState(() {
-                _filterText = '';
-              });
-            },
-            onTextChanged: (String value) {
-              setState(() {
-                _filterText = value;
-              });
-            },
-            children: _getFilteredListViewChildren(),
-          ),
-          ButtonPadding(),
-          _getBottomButtonRow(),
-          ButtonPadding(),
-        ],
-      );
+  Widget _getBottomSheet() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _getAnimatedSelectionPanel(),
+        ButtonPadding(),
+        _getBottomButtonRow(),
+        ButtonPadding(),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -991,25 +1315,32 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen> {
       editing ? 'Edit' : 'Build',
     ];
 
-    return Scaffold(
-      appBar: AppBar(
-        title: FlowBreadcrumb(
-          segments: segments,
-          onFirstSegmentTap: () => Navigator.of(context).pop(),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await _saveAndPop();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: FlowBreadcrumb(
+            segments: segments,
+            onFirstSegmentTap: _saveAndPop,
+          ),
         ),
-      ),
-      body: BackgroundContainer(
-        child: Column(
-          children: [
-            _getTokenStrip(),
-            Expanded(
-              child: _getBody(),
-            ),
-            Align(
-              alignment: FractionalOffset.bottomCenter,
-              child: _getBottomSheet(),
-            ),
-          ],
+        body: BackgroundContainer(
+          child: Column(
+            children: [
+              _getTokenStrip(),
+              Expanded(
+                child: _getBody(),
+              ),
+              Align(
+                alignment: FractionalOffset.bottomCenter,
+                child: _getBottomSheet(),
+              ),
+            ],
+          ),
         ),
       ),
     );

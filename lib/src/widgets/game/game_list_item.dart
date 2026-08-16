@@ -3,6 +3,7 @@ import 'package:btcc/src/utils/navigation_helper.dart';
 import 'package:btcc/src/utils/string_helper.dart';
 import 'package:btcc/src/utils/typedefs.dart';
 import 'package:btcc/src/widgets/castle/castle_tiles_grid.dart';
+import 'package:btcc/src/widgets/tile/tile_widget.dart';
 import 'package:flutter/material.dart';
 
 import '../async_confirmation_dialog.dart';
@@ -36,15 +37,19 @@ class GameListItem extends StatelessWidget {
       children: [
         Text(castle.hiveCastle?.title ?? castle.title),
         Text(castle.getScore().toString()),
-        Row(
-          children: [
-            Flexible(child: Container()),
-            CastleTilesGrid(castle.castleTiles,
-              scalePercentScreenWidth: .4,
-            ),
-            Flexible(child: Container()),
-          ],
-        )
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final grid = castle.castleTiles;
+            final scale = constraints.maxWidth /
+                (grid.width * TileWidget.defaultTileWidthHeight);
+            return CastleTilesGrid(
+              grid,
+              scaleWithScreen: false,
+              scalePercentScreenWidth: 0,
+              scale: scale.clamp(0.12, 1.0),
+            );
+          },
+        ),
       ],
     ),
   );

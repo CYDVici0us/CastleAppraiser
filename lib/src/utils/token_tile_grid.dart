@@ -18,6 +18,99 @@ class TokenTileGrid {
     TileType.RoyalAttendant,
   ];
 
+  /// Camera / game convention: at most two bonus cards per castle.
+  static const int maxBonusCardsPerCastle = 2;
+
+  /// Camera / game convention: at most two royal attendants per castle.
+  static const int maxRoyalAttendantsPerCastle = 2;
+
+  /// The four attendant roles (duplicates like Jester2 are the same type).
+  static const List<TileId> canonicalRoyalAttendantIds = [
+    TileId.RoyalAttendantTaylor,
+    TileId.RoyalAttendantJester,
+    TileId.RoyalAttendantKnight,
+    TileId.RoyalAttendantPainter,
+  ];
+
+  /// Shared type key for attendant copies (Jester / Jester2 → same name).
+  static String attendantTypeKey(Tile tile) => tile.name;
+
+  static List<Tile> _tokensExcluding(
+    List<Tile> tokens,
+    Tile? replacing,
+  ) {
+    if (replacing == null) return tokens;
+    return tokens.where((t) => t.id != replacing.id).toList();
+  }
+
+  static bool canAddMoreBonusCards(
+    List<Tile> tokens, {
+    Tile? replacing,
+  }) {
+    final count = _tokensExcluding(tokens, replacing)
+        .where((t) => t.isBonusCard())
+        .length;
+    return count < maxBonusCardsPerCastle;
+  }
+
+  static bool canAddMoreAttendants(
+    List<Tile> tokens, {
+    Tile? replacing,
+  }) {
+    final count = _tokensExcluding(tokens, replacing)
+        .where((t) => t.isRoyalAttendant())
+        .length;
+    return count < maxRoyalAttendantsPerCastle;
+  }
+
+  static bool canAddAnyToken(List<Tile> tokens) =>
+      canAddMoreBonusCards(tokens) || canAddMoreAttendants(tokens);
+
+  /// Inventory for the strip picker: unused bonus cards (if under max) and
+  /// up to the four attendant types not already on the castle (if under max).
+  static List<Tile> filterTokenPickerTiles({
+    required List<Tile> inventory,
+    required List<Tile> currentTokens,
+    Tile? replacing,
+  }) {
+    final effective = _tokensExcluding(currentTokens, replacing);
+    final allowBonus = canAddMoreBonusCards(currentTokens, replacing: replacing);
+    final allowAttendant =
+        canAddMoreAttendants(currentTokens, replacing: replacing);
+
+    final usedBonusIds = {
+      for (final t in effective)
+        if (t.isBonusCard()) t.id,
+    };
+    final usedAttendantTypes = {
+      for (final t in effective)
+        if (t.isRoyalAttendant()) attendantTypeKey(t),
+    };
+
+    final result = <Tile>[];
+    final seenAttendantTypes = <String>{};
+
+    for (final tile in inventory) {
+      if (tile.isBonusCard()) {
+        if (!allowBonus) continue;
+        if (usedBonusIds.contains(tile.id)) continue;
+        result.add(tile);
+        continue;
+      }
+
+      if (tile.isRoyalAttendant()) {
+        if (!allowAttendant) continue;
+        if (!canonicalRoyalAttendantIds.contains(tile.id)) continue;
+        final key = attendantTypeKey(tile);
+        if (usedAttendantTypes.contains(key)) continue;
+        if (!seenAttendantTypes.add(key)) continue;
+        result.add(tile);
+      }
+    }
+
+    return result;
+  }
+
   /// Pulls token tiles out of [grid], replacing them with [getEmpty], then
   /// packs remaining rooms toward the throne/ground to close holes.
   /// Returns tokens in row-major order (bonus/royal as found).
@@ -45,6 +138,7 @@ class TokenTileGrid {
 
   /// Prepends a top row for [tokens] above [structural] so tokens sit above
   /// the structural perimeter and do not touch castle rooms.
+  /// Tokens are left-aligned in that row.
   static GridList<Tile> mergeTokenTilesIntoGrid(
     GridList<Tile> structural,
     List<Tile> tokens, {
@@ -78,9 +172,18 @@ class TokenTileGrid {
   static String _enumLabel(Object value) =>
       value.toString().split('.').last;
 
-  /// Readable title for strip UI (spaces CamelCase / strips BonusCard prefix).
+  /// Readable title for picker / strip UI.
   static String displayName(Tile tile) {
     var name = tile.name;
+
+    // BallRoomPerUtility → "Ball Room · Utility"
+    if (name.startsWith('BallRoom')) {
+      var rest = name.substring('BallRoom'.length);
+      if (rest.startsWith('Per')) rest = rest.substring(3);
+      final condition = humanizeCamelCase(rest);
+      return condition.isEmpty ? 'Ball Room' : 'Ball Room · $condition';
+    }
+
     if (name.startsWith('BonusCard')) {
       name = name.substring('BonusCard'.length);
     }
@@ -91,20 +194,68 @@ class TokenTileGrid {
       name = name.substring('RoyalAttendant'.length);
       if (name.isEmpty) name = 'Royal Attendant';
     }
-    // Insert spaces before capitals: RoomsAboveLevelThree -> Rooms Above Level Three
-    name = name.replaceAllMapped(
-      RegExp(r'(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])'),
-      (m) => ' ',
-    );
-    return name.trim().isEmpty ? tile.name : name.trim();
+    final spaced = humanizeCamelCase(name);
+    return spaced.isEmpty ? tile.name : spaced;
   }
 
-  /// Short scoring blurb for the selected token.
+  /// Scoring-grid label: keeps type words ("Bonus Card", "Royal Attendant").
+  static String scoringLabel(Tile tile) {
+    if (tile.isBonusCard()) {
+      final detail = displayName(tile);
+      return detail.isEmpty ? 'Bonus Card' : 'Bonus Card · $detail';
+    }
+    if (tile.isRoyalAttendant()) {
+      final detail = displayName(tile);
+      if (detail.isEmpty || detail == 'Royal Attendant') {
+        return 'Royal Attendant';
+      }
+      return 'Royal Attendant · $detail';
+    }
+    return displayName(tile);
+  }
+
+  static String humanizeCamelCase(String name) {
+    return name
+        .replaceAllMapped(
+          RegExp(r'(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])'),
+          (m) => ' ',
+        )
+        .trim();
+  }
+
+  /// Short scoring blurb for picker / selected token details.
   static String scoringDescription(Tile tile) {
     if (tile.isRoyalAttendant()) {
       final condition = _enumLabel(tile.scoringCondition);
       return '+${tile.scorePer} per $condition in castle';
     }
+
+    if (tile.tileType == TileType.Special) {
+      final per = tile.scorePer;
+      if (tile.name.startsWith('BallRoom')) {
+        final condition = humanizeCamelCase(_enumLabel(tile.scoringCondition));
+        return '+$per per $condition in neighboring castles';
+      }
+      if (tile.scoringCondition == ScoringCondition.Always) {
+        return '+$per';
+      }
+      final positions = tile.scoringPositions;
+      if (positions.contains(ScoringPosition.Below)) {
+        return '+$per per room below';
+      }
+      if (positions.contains(ScoringPosition.Above)) {
+        return '+$per per room above';
+      }
+      if (positions.length >= 4) {
+        final condition = tile.scoringCondition == ScoringCondition.Any
+            ? 'room'
+            : humanizeCamelCase(_enumLabel(tile.scoringCondition));
+        return '+$per per surrounding $condition';
+      }
+      if (per != 0) return '+$per';
+      return '';
+    }
+
     if (!tile.isBonusCard()) return '';
 
     final per = tile.scorePer;

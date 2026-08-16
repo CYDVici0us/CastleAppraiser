@@ -112,6 +112,20 @@ class Game {
     return getLowerScoreFromPair(MapEntry(left, right));
   }
 
+  /// Which adjacent castle sets this player's score (the lower one).
+  /// `-1` = castle above (left of pair), `1` = castle below (right of pair),
+  /// `0` = tie. Null when the player has no scored pair.
+  int? getPlayerPrimaryCastleDirection(int playerIndex) {
+    if (playerIndex < 0 || playerIndex >= castles.length || castles.length < 3) {
+      return null;
+    }
+    final above = castles[playerIndex].getScore();
+    final below = castles[(playerIndex + 1) % castles.length].getScore();
+    if (above < below) return -1;
+    if (below < above) return 1;
+    return 0;
+  }
+
   MapEntry<Castle, Castle> breakTie(MapEntry<Castle, Castle> a,
     MapEntry<Castle, Castle> b) {
     

@@ -4,14 +4,18 @@ import 'package:screenshot/screenshot.dart';
 typedef ScreenshotWidgetBuilder = Widget Function(ScreenshotController);
 
 class InteractiveModalWidget extends StatefulWidget {
-
   final Widget child;
+  /// Content shown in the zoom modal / screenshot (defaults to [child]).
+  final Widget? modalChild;
   final ScreenshotWidgetBuilder? builder;
-  InteractiveModalWidget({required this.child, this.builder});
+  InteractiveModalWidget({
+    required this.child,
+    this.modalChild,
+    this.builder,
+  });
 
   @override
   State createState() => _InteractiveModalWidgetState();
-
 }
 
 class _InteractiveModalWidgetState extends State<InteractiveModalWidget> {
@@ -19,12 +23,13 @@ class _InteractiveModalWidgetState extends State<InteractiveModalWidget> {
 
   @override
   Widget build(BuildContext context) => InkWell(
-    onTap: () => Navigator.of(context).push(InteractiveModal(widget.child,
-      screenshotController,
-      widget.builder,
-    )),
-    child: widget.child,
-  );
+        onTap: () => Navigator.of(context).push(InteractiveModal(
+          widget.modalChild ?? widget.child,
+          screenshotController,
+          widget.builder,
+        )),
+        child: widget.child,
+      );
 }
 
 class InteractiveModal extends ModalRoute<void> {
@@ -49,17 +54,15 @@ class InteractiveModal extends ModalRoute<void> {
   final Widget content;
   final ScreenshotController screenshotController;
   final ScreenshotWidgetBuilder? screenshotBuilder;
-  InteractiveModal(this.content, this.screenshotController, this.screenshotBuilder);
+  InteractiveModal(
+      this.content, this.screenshotController, this.screenshotBuilder);
 
   @override
   Widget buildPage(
     BuildContext context,
     Animation<double> animation,
-    Animation<double> secondaryAnimation,) 
-  {
-    if (screenshotBuilder != null) {
-      print(' builder not null' );
-    }
+    Animation<double> secondaryAnimation,
+  ) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.black.withValues(alpha: 0.5),
@@ -79,14 +82,15 @@ class InteractiveModal extends ModalRoute<void> {
           ],
         ),
       ),
-      floatingActionButton: screenshotBuilder == null ? null : screenshotBuilder!(screenshotController),
+      floatingActionButton: screenshotBuilder == null
+          ? null
+          : screenshotBuilder!(screenshotController),
     );
   }
 
   @override
-  Widget buildTransitions(
-      BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation, Widget child) {
-    // You can add your own animations for the overlay content
+  Widget buildTransitions(BuildContext context, Animation<double> animation,
+      Animation<double> secondaryAnimation, Widget child) {
     return FadeTransition(
       opacity: animation,
       child: ScaleTransition(

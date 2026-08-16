@@ -2,6 +2,7 @@ import 'package:auto_size_text/auto_size_text.dart';
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/utils/typedefs.dart';
 import 'package:btcc/src/widgets/async_confirmation_dialog.dart';
+import 'package:btcc/src/widgets/tile/tile_widget.dart';
 import 'package:flutter/material.dart';
 
 import 'castle_tiles_grid.dart';
@@ -14,6 +15,8 @@ class CastleListItem extends StatelessWidget {
   final VoidCallback? onOpen;
   final VoidCallback? onRename;
   final VoidCallback? onEdit;
+  final VoidCallback? onMoveUp;
+  final VoidCallback? onMoveDown;
 
   CastleListItem({
     required this.castle,
@@ -23,6 +26,8 @@ class CastleListItem extends StatelessWidget {
     this.onOpen,
     this.onRename,
     this.onEdit,
+    this.onMoveUp,
+    this.onMoveDown,
   }) : super(key: key);
 
   void _onMenuSelected(BuildContext context, String value) {
@@ -55,86 +60,167 @@ class CastleListItem extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => Material(
-    elevation: 8.0,
-    key: key ?? Key('${castle.hiveCastle!.key}'),
-    borderRadius: BorderRadius.circular(20.0),
-    color: color,
-    child: InkWell(
-      onTap: onOpen,
+  Widget build(BuildContext context) {
+    final title = castle.hiveCastle?.title ?? castle.title;
+    final score = castle.getScore();
+
+    return Material(
+      elevation: 8.0,
+      key: key ?? Key('${castle.hiveCastle!.key}'),
       borderRadius: BorderRadius.circular(20.0),
-      child: Container(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  height: 60,
-                  width: 60,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Text('${castle.getScore()}',
-                      style: TextStyle(
-                        fontSize: 24,
-                        color: Colors.black,
-                      ),
+      color: color,
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(20.0),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(width: 4),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Container(
+                          height: 40,
+                          width: 40,
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: Text(
+                              '$score',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                color: Colors.black,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8.0,
+                                vertical: 6.0,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(8.0),
+                              ),
+                              child: AutoSizeText(
+                                title,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                maxLines: 2,
+                                minFontSize: 10,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (onMoveUp != null || onMoveDown != null)
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: 'Move up',
+                                visualDensity: VisualDensity.compact,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(
+                                  minWidth: 32,
+                                  minHeight: 28,
+                                ),
+                                onPressed: onMoveUp,
+                                icon: Icon(
+                                  Icons.keyboard_arrow_up,
+                                  color: onMoveUp != null
+                                      ? Colors.white
+                                      : Colors.white38,
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Move down',
+                                visualDensity: VisualDensity.compact,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(
+                                  minWidth: 32,
+                                  minHeight: 28,
+                                ),
+                                onPressed: onMoveDown,
+                                icon: Icon(
+                                  Icons.keyboard_arrow_down,
+                                  color: onMoveDown != null
+                                      ? Colors.white
+                                      : Colors.white38,
+                                ),
+                              ),
+                            ],
+                          ),
+                        PopupMenuButton<String>(
+                          padding: EdgeInsets.zero,
+                          icon: const Icon(Icons.more_vert, color: Colors.white),
+                          onSelected: (value) => _onMenuSelected(context, value),
+                          itemBuilder: (_) => [
+                            if (onOpen != null)
+                              const PopupMenuItem(
+                                value: 'scoring',
+                                child: Text('Scoring'),
+                              ),
+                            if (onEdit != null)
+                              const PopupMenuItem(
+                                value: 'edit',
+                                child: Text('Edit'),
+                              ),
+                            if (onRename != null)
+                              const PopupMenuItem(
+                                value: 'rename',
+                                child: Text('Rename'),
+                              ),
+                            const PopupMenuItem(
+                              value: 'delete',
+                              child: Text('Delete'),
+                            ),
+                          ],
+                        ),
+                        const Icon(Icons.drag_handle, color: Colors.white70),
+                        const SizedBox(width: 4),
+                      ],
                     ),
-                  )
-                ),
-                Container(height: 20),
-                Container(
-                  constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width/3),
-                  padding: EdgeInsets.all(8.0),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.all(Radius.circular(8.0)),
-                  ),
-                  child: AutoSizeText('${castle.hiveCastle!.title}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.black,
+                    const SizedBox(height: 8),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final grid = castle.castleTiles;
+                        final scale = constraints.maxWidth /
+                            (grid.width * TileWidget.defaultTileWidthHeight);
+                        return Align(
+                          alignment: Alignment.centerLeft,
+                          child: CastleTilesGrid(
+                            grid,
+                            scaleWithScreen: false,
+                            scalePercentScreenWidth: 0,
+                            scale: scale.clamp(0.12, 1.0),
+                          ),
+                        );
+                      },
                     ),
-                    maxLines: 3,
-                  ),
+                  ],
                 ),
-              ]
-            ),
-            Flexible(
-              fit: FlexFit.tight,
-              child: Row(
-                children: [
-                  Flexible(child: Container()),
-                  CastleTilesGrid(castle.castleTiles,
-                    scalePercentScreenWidth: .5,
-                  ),
-                  Flexible(child: Container())
-                ],
-              )
-            ),
-            PopupMenuButton<String>(
-              icon: Icon(Icons.more_vert, color: Colors.white),
-              onSelected: (value) => _onMenuSelected(context, value),
-              itemBuilder: (_) => [
-                if (onOpen != null)
-                  const PopupMenuItem(value: 'scoring', child: Text('Scoring')),
-                if (onEdit != null)
-                  const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                if (onRename != null)
-                  const PopupMenuItem(value: 'rename', child: Text('Rename')),
-                const PopupMenuItem(value: 'delete', child: Text('Delete')),
-              ],
-            ),
-            Icon(Icons.drag_handle, color: Colors.white70),
-            Container(width: 8),
-          ],
-        )
-      )
-    )
-  );
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

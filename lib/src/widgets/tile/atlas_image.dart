@@ -70,7 +70,10 @@ class _AtlasImagePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_AtlasImagePainter oldDelegate) {
-    return rect != oldDelegate.rect;
+    return rect != oldDelegate.rect ||
+        scaleFactor != oldDelegate.scaleFactor ||
+        width != oldDelegate.width ||
+        height != oldDelegate.height;
   }
 
 }
