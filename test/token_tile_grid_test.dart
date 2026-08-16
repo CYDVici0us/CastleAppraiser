@@ -208,11 +208,11 @@ void main() {
     test('displayName humanizes specials and ball rooms', () {
       expect(
         TokenTileGrid.displayName(BallRoomPerUtility()),
-        'Ball Room · Utility',
+        'Ball Room',
       );
       expect(
         TokenTileGrid.displayName(BallRoomPerFood()),
-        'Ball Room · Food',
+        'Ball Room',
       );
       expect(TokenTileGrid.displayName(Tower()), 'Tower');
       expect(TokenTileGrid.displayName(GrandFoyer()), 'Grand Foyer');

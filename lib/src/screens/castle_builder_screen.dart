@@ -14,6 +14,9 @@ import 'package:btcc/src/widgets/builder/filtered_drag_and_drop_list_view.dart';
 import 'package:btcc/src/widgets/builder/tile_picker_sheet.dart';
 import 'package:btcc/src/widgets/button_padding.dart';
 import 'package:btcc/src/widgets/flow_breadcrumb.dart';
+import 'package:btcc/src/widgets/tile/scoring_blurb.dart';
+import 'package:btcc/src/widgets/tile/scoring_placement_grid.dart';
+import 'package:btcc/src/widgets/tile/tile_type_widget.dart';
 import 'package:btcc/src/widgets/tile/tile_widget.dart';
 import 'package:flutter/material.dart' hide Placeholder;
 import 'dart:math';
@@ -497,65 +500,34 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     _updateCastle(copy);
   }
 
-  static String _enumLabel(Object value) => value.toString().split('.').last;
-
-  String? _tileScoringSummary(Tile tile) {
-    if (tile.isEmpty() || tile.isPlaceholder()) return null;
-
-    final parts = <String>[];
-
-    if (tile.scoringCondition != ScoringCondition.None) {
-      final condition = _enumLabel(tile.scoringCondition);
-      final positions = tile.scoringPositions;
-      String where = '';
-      if (positions.contains(ScoringPosition.Type)) {
-        where = ' in castle';
-      } else if (positions.contains(ScoringPosition.Connected)) {
-        where = ' connected';
-      } else if (positions.contains(ScoringPosition.Neighbor)) {
-        where = ' in neighboring castles';
-      } else if (positions.contains(ScoringPosition.Above)) {
-        where = ' above';
-      } else if (positions.contains(ScoringPosition.Below)) {
-        where = ' below';
-      } else if (positions.length >= 4) {
-        // Ordinal rings (NW/N/NE/…) — describe as surrounding, not compass labels.
-        where = ' surrounding';
-      }
-      if (tile.scorePer != 0) {
-        parts.add('+${tile.scorePer} per $condition$where');
-      } else {
-        parts.add(condition + where);
-      }
-    } else if (tile.scorePer != 0) {
-      parts.add('+${tile.scorePer}');
-    }
-
-    if (tile.throneRoomCondition != ScoringCondition.None) {
-      parts.add(
-          '+${tile.scorePer} per ${_enumLabel(tile.throneRoomCondition)}');
-    }
-
-    if (tile.decorationType != DecorationType.None) {
-      parts.add(_enumLabel(tile.decorationType));
-    }
-
-    return parts.isEmpty ? null : parts.join(' · ');
-  }
-
   Widget _getSelectedTileDetails(int index, Tile tile) {
     final theme = Theme.of(context);
     final isEmpty = tile.isEmpty();
+    final isThrone = tile.isThroneRoom();
     final title = isEmpty
         ? 'Empty cell'
-        : tile.tileType == TileType.Special
+        : tile.tileType == TileType.Special ||
+                TokenTileGrid.isTokenType(tile.tileType)
             ? TokenTileGrid.displayName(tile)
             : tile.name;
-    final scoringText = tile.tileType == TileType.Special
-        ? TokenTileGrid.scoringDescription(tile)
-        : _tileScoringSummary(tile);
+    final showScoring =
+        !isEmpty && ScoringBlurb.hasContent(tile, includeDecoration: false);
+    final showGrid = !isEmpty && ScoringPlacementMapping.shouldShow(tile);
     final invalids = TilePlacement.invalidReasons(_castleTiles, index);
-    final imageScale = tile.isThroneRoom() ? 1.05 : 1.35;
+    final titleStyle = theme.textTheme.titleLarge?.copyWith(
+      fontWeight: FontWeight.w700,
+    );
+    final metaStyle = theme.textTheme.bodyLarge?.copyWith(
+      color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+    );
+    final scoringStyle = theme.textTheme.bodyMedium?.copyWith(
+      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+    );
+    final decorationLabel = !isEmpty && tile.decorationType != DecorationType.None
+        ? TokenTileGrid.humanizeCamelCase(
+            tile.decorationType.toString().split('.').last,
+          )
+        : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -571,47 +543,72 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
             ),
           ],
         ),
-        if (!isEmpty) ...[
-          Center(
-            child: TileWidget(
-              tile,
-              scale: imageScale,
-              showOutline: true,
-              showInvalidBadge: invalids.isNotEmpty,
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
-        Text(
-          title,
+        ScoringBlurb.titleWithCategories(
+          title: title,
+          style: titleStyle,
           textAlign: TextAlign.center,
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
         ),
         if (!isEmpty) ...[
-          const SizedBox(height: 4),
-          Text(
-            tileTypeDisplayName(tile.tileType),
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
-            ),
-          ),
-          if (scoringText != null && scoringText.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              scoringText,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _selectedTileCategoryLeading(tile.tileType),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  tileTypeDisplayName(tile.tileType),
+                  style: metaStyle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
+              if (decorationLabel != null)
+                Text(
+                  decorationLabel,
+                  style: metaStyle,
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (isThrone)
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final scale = constraints.maxWidth /
+                    (TileWidget.defaultTileWidthHeight * 2);
+                return TileWidget(
+                  tile,
+                  scale: scale,
+                  showOutline: true,
+                  showInvalidBadge: invalids.isNotEmpty,
+                );
+              },
+            )
+          else
+            Center(
+              child: TileWidget(
+                tile,
+                scale: 1.7,
+                showOutline: true,
+                showInvalidBadge: invalids.isNotEmpty,
+              ),
+            ),
+          if (showScoring) ...[
+            const SizedBox(height: 12),
+            ScoringBlurb(
+              tile: tile,
+              style: scoringStyle,
+              textAlign: TextAlign.center,
+              includeDecoration: false,
+            ),
+          ],
+          if (showGrid) ...[
+            const SizedBox(height: 12),
+            Center(
+              child: ScoringPlacementGrid.forTile(tile, cellSize: 22),
             ),
           ],
         ] else ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           Text(
             _canAddAt(index)
                 ? 'Search or tap + New Tile to place'
@@ -632,6 +629,31 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
         ],
       ],
     );
+  }
+
+  Widget _selectedTileCategoryLeading(TileType type) {
+    switch (type) {
+      case TileType.Corridor:
+      case TileType.Downstairs:
+      case TileType.Food:
+      case TileType.Living:
+      case TileType.Outdoor:
+      case TileType.Sleeping:
+      case TileType.Utility:
+      case TileType.Secret:
+      case TileType.Activity:
+        return TileTypeWidget(type, scale: 0.32);
+      case TileType.Special:
+        return const Icon(Icons.star, size: 22);
+      case TileType.RoyalAttendant:
+        return const Icon(Icons.person, size: 22);
+      case TileType.BonusCard:
+        return const Icon(Icons.style, size: 22);
+      case TileType.ThroneRoom:
+        return const Icon(Icons.event_seat, size: 22);
+      default:
+        return const Icon(Icons.grid_view, size: 22);
+    }
   }
 
   Widget _getSelectionActionBar() {
@@ -1008,10 +1030,16 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     final theme = Theme.of(context);
     final title = TokenTileGrid.displayName(tile);
     final typeLabel = tileTypeDisplayName(tile.tileType);
-    final scoring = TokenTileGrid.scoringDescription(tile);
+    final showScoring = ScoringBlurb.hasContent(tile);
     final imageScale =
         (MediaQuery.of(context).size.width * 0.42) /
             TileWidget.defaultTileWidthHeight;
+    final titleStyle = theme.textTheme.titleLarge?.copyWith(
+      fontWeight: FontWeight.w600,
+    );
+    final scoringStyle = theme.textTheme.bodyMedium?.copyWith(
+      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1038,14 +1066,10 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
           ),
         ),
         const SizedBox(height: 12),
-        Text(
-          title,
+        ScoringBlurb.titleWithCategories(
+          title: title,
+          style: titleStyle,
           textAlign: TextAlign.center,
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
         ),
         const SizedBox(height: 4),
         Text(
@@ -1055,14 +1079,12 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
             color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
           ),
         ),
-        if (scoring.isNotEmpty) ...[
+        if (showScoring) ...[
           const SizedBox(height: 6),
-          Text(
-            scoring,
+          ScoringBlurb(
+            tile: tile,
+            style: scoringStyle,
             textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-            ),
           ),
         ],
         const SizedBox(height: 4),

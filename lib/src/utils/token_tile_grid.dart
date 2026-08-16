@@ -176,12 +176,9 @@ class TokenTileGrid {
   static String displayName(Tile tile) {
     var name = tile.name;
 
-    // BallRoomPerUtility → "Ball Room · Utility"
+    // BallRoomPerUtility → "Ball Room" (category lives in scoring text).
     if (name.startsWith('BallRoom')) {
-      var rest = name.substring('BallRoom'.length);
-      if (rest.startsWith('Per')) rest = rest.substring(3);
-      final condition = humanizeCamelCase(rest);
-      return condition.isEmpty ? 'Ball Room' : 'Ball Room · $condition';
+      return 'Ball Room';
     }
 
     if (name.startsWith('BonusCard')) {

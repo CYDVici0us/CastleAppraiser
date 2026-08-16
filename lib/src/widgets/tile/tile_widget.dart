@@ -25,13 +25,15 @@ class TileWidget extends StatelessWidget {
   bool get _isTokenTile => tile.isBonusCard() || tile.isRoyalAttendant();
 
   double _getTileWidth() {
+    // Throne rooms are always a 2×1 rectangle (never squashed to a square).
+    if (tile.tileType == TileType.ThroneRoom) {
+      return defaultTileWidthHeight * 2 * scale;
+    }
+
     if (tileWidth != defaultTileWidthHeight) {
       return tileWidth;
     }
 
-    if (tile.tileType == TileType.ThroneRoom) {
-      return defaultTileWidthHeight * 2 * scale;
-    }
     if (tile.tileType == TileType.Placeholder) {
       return 0;
     }
@@ -165,7 +167,7 @@ class TileWidget extends StatelessWidget {
     } else if (tile.tileType == TileType.ThroneRoom) {
       child = Image(
         image: AssetImage(tile.getFullAssetPath()),
-        fit: BoxFit.fill,
+        fit: BoxFit.contain,
       );
     } else if (tile.tileType == TileType.Empty) {
       child = Container(

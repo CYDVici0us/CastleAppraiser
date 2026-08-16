@@ -2,6 +2,8 @@ import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/utils/tile_helper.dart';
 import 'package:btcc/src/utils/tile_placement.dart';
 import 'package:btcc/src/utils/token_tile_grid.dart';
+import 'package:btcc/src/widgets/tile/scoring_blurb.dart';
+import 'package:btcc/src/widgets/tile/scoring_placement_grid.dart';
 import 'package:btcc/src/widgets/tile/tile_type_widget.dart';
 import 'package:btcc/src/widgets/tile/tile_widget.dart';
 import 'package:flutter/material.dart';
@@ -56,32 +58,38 @@ Future<Tile?> showTilePickerDialog({
   );
 }
 
-/// Horizontal throne-room picker. Returns the chosen throne, or null if dismissed.
+/// Large-card throne room picker (same style as Bonus/Attendant).
+/// Returns the chosen throne, or null if dismissed.
 Future<Tile?> showThroneRoomPickerDialog(BuildContext context) {
   final trs = TileHelper().getAllThroneRooms();
+  final size = MediaQuery.of(context).size;
   return showDialog<Tile>(
     context: context,
     builder: (ctx) => AlertDialog(
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('Choose a throne room'),
-          SizedBox(
-            height: TileWidget.defaultTileWidthHeight,
-            width: MediaQuery.of(context).size.width * .8,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: trs.length,
-              itemBuilder: (_, index) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10.0),
-                child: InkWell(
-                  child: TileWidget(trs[index]),
-                  onTap: () => Navigator.pop(ctx, trs[index]),
-                ),
-              ),
+      contentPadding: EdgeInsets.zero,
+      content: SizedBox(
+        width: size.width * 0.9,
+        height: size.height * 0.7,
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Choose a Throne Room'),
+            leading: IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () => Navigator.pop(ctx),
             ),
           ),
-        ],
+          body: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            itemCount: trs.length,
+            itemBuilder: (_, index) {
+              final tile = trs[index];
+              return _ThronePickerCard(
+                tile: tile,
+                onTap: () => Navigator.pop(ctx, tile),
+              );
+            },
+          ),
+        ),
       ),
     ),
   );
@@ -179,22 +187,32 @@ class _TileListPage extends StatelessWidget {
 
   const _TileListPage({required this.type, required this.tiles});
 
-  /// Bonus / attendant / special use large cards with readable labels.
-  bool get _useLargePickerCard =>
-      TokenTileGrid.isTokenType(type) || type == TileType.Special;
+  /// Deduplicate specials that share a display name (Tower×5 / BallRoom×2).
+  bool get _dedupeByDisplayName => type == TileType.Special;
+
+  String _specialDedupeKey(Tile tile) {
+    // Ball rooms share the heading "Ball Room"; keep one per variant name
+    // (collapses BallRoomPerUtility / BallRoomPerUtility2).
+    if (tile.name.startsWith('BallRoom')) return tile.name;
+    return TokenTileGrid.displayName(tile);
+  }
 
   List<Tile> get _sortedTiles {
     final sorted = List<Tile>.from(tiles);
-    if (_useLargePickerCard) {
-      sorted.sort((a, b) => TokenTileGrid.displayName(a)
-          .compareTo(TokenTileGrid.displayName(b)));
+    sorted.sort((a, b) {
       if (type == TileType.Special) {
-        // One entry per distinct special (Tower×5 / BallRoom×2 duplicates).
-        final seen = <String>{};
-        sorted.retainWhere((t) => seen.add(TokenTileGrid.displayName(t)));
+        final aBall = a.name.startsWith('BallRoom');
+        final bBall = b.name.startsWith('BallRoom');
+        if (aBall != bBall) return aBall ? 1 : -1;
       }
-    } else {
-      sorted.sort((a, b) => a.name.compareTo(b.name));
+      final byName =
+          _pickerDisplayName(a).compareTo(_pickerDisplayName(b));
+      if (byName != 0) return byName;
+      return a.name.compareTo(b.name);
+    });
+    if (_dedupeByDisplayName) {
+      final seen = <String>{};
+      sorted.retainWhere((t) => seen.add(_specialDedupeKey(t)));
     }
     return sorted;
   }
@@ -204,20 +222,18 @@ class _TileListPage extends StatelessWidget {
     final items = _sortedTiles;
     return Scaffold(
       appBar: AppBar(
-        title: _useLargePickerCard
-            ? Row(
-                children: [
-                  _CategoryLeading(type: type, compact: true),
-                  const SizedBox(width: 10),
-                  Flexible(
-                    child: Text(
-                      tileTypeDisplayName(type),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              )
-            : Text(tileTypeDisplayName(type)),
+        title: Row(
+          children: [
+            _CategoryLeading(type: type, compact: true),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                tileTypeDisplayName(type),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
       ),
       body: items.isEmpty
           ? const Center(child: Text('No tiles in this category'))
@@ -226,22 +242,10 @@ class _TileListPage extends StatelessWidget {
               itemCount: items.length,
               itemBuilder: (context, index) {
                 final tile = items[index];
-                if (_useLargePickerCard) {
-                  return _LargePickerCard(
-                    tile: tile,
-                    onTap: () =>
-                        Navigator.of(context, rootNavigator: true).pop(tile),
-                  );
-                }
-                return ListTile(
-                  leading: TileWidget(
-                    tile,
-                    scale: 0.6,
-                  ),
-                  title: Text(tile.name),
-                  onTap: () {
-                    Navigator.of(context, rootNavigator: true).pop(tile);
-                  },
+                return _LargePickerCard(
+                  tile: tile,
+                  onTap: () =>
+                      Navigator.of(context, rootNavigator: true).pop(tile),
                 );
               },
             ),
@@ -249,7 +253,15 @@ class _TileListPage extends StatelessWidget {
   }
 }
 
-/// Larger picker row for specials / bonus / attendants with readable labels.
+String _pickerDisplayName(Tile tile) {
+  if (TokenTileGrid.isTokenType(tile.tileType) ||
+      tile.tileType == TileType.Special) {
+    return TokenTileGrid.displayName(tile);
+  }
+  return tile.name;
+}
+
+/// Larger picker row with readable labels (all placeable tile types).
 class _LargePickerCard extends StatelessWidget {
   final Tile tile;
   final VoidCallback onTap;
@@ -262,8 +274,12 @@ class _LargePickerCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final name = TokenTileGrid.displayName(tile);
-    final scoring = TokenTileGrid.scoringDescription(tile);
+    final name = _pickerDisplayName(tile);
+    final showScoring = ScoringBlurb.hasContent(tile);
+    final showGrid = ScoringPlacementMapping.shouldShow(tile);
+    final titleStyle = theme.textTheme.titleLarge?.copyWith(
+      fontWeight: FontWeight.w700,
+    );
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6),
@@ -282,23 +298,74 @@ class _LargePickerCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      name,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                    ScoringBlurb.titleWithCategories(
+                      title: name,
+                      style: titleStyle,
                     ),
-                    if (scoring.isNotEmpty) ...[
+                    if (showScoring) ...[
                       const SizedBox(height: 6),
-                      Text(
-                        scoring,
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          color: theme.colorScheme.onSurface
-                              .withValues(alpha: 0.72),
-                        ),
-                      ),
+                      ScoringBlurb(tile: tile),
+                    ],
+                    if (showGrid) ...[
+                      const SizedBox(height: 10),
+                      ScoringPlacementGrid.forTile(tile, cellSize: 16),
                     ],
                   ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Large throne picker card with scoring lines + placement grid.
+class _ThronePickerCard extends StatelessWidget {
+  final Tile tile;
+  final VoidCallback onTap;
+
+  const _ThronePickerCard({
+    required this.tile,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final showScoring = ScoringBlurb.hasContent(tile);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  // Fill card width; height stays half (2×1 rectangle).
+                  final scale = constraints.maxWidth /
+                      (TileWidget.defaultTileWidthHeight * 2);
+                  return TileWidget(tile, scale: scale);
+                },
+              ),
+              if (showScoring) ...[
+                const SizedBox(height: 12),
+                ScoringBlurb(
+                  tile: tile,
+                  textAlign: TextAlign.center,
+                ),
+              ],
+              const SizedBox(height: 10),
+              Center(
+                child: ScoringPlacementGrid.throne(
+                  positions: tile.scoringPositions,
+                  cellSize: 14,
                 ),
               ),
             ],
