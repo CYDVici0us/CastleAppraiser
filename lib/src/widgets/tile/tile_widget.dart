@@ -26,7 +26,7 @@ class TileWidget extends StatelessWidget {
 
   double _getTileWidth() {
     // Throne rooms are always a 2×1 rectangle (never squashed to a square).
-    if (tile.tileType == TileType.ThroneRoom) {
+    if (tile.trueTileType == TileType.ThroneRoom) {
       return defaultTileWidthHeight * 2 * scale;
     }
 
@@ -34,7 +34,7 @@ class TileWidget extends StatelessWidget {
       return tileWidth;
     }
 
-    if (tile.tileType == TileType.Placeholder) {
+    if (tile.trueTileType == TileType.Placeholder) {
       return 0;
     }
     if (tile.isBonusCard()) {
@@ -145,7 +145,7 @@ class TileWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (tile.tileType == TileType.Placeholder) {
+    if (tile.trueTileType == TileType.Placeholder) {
       return Container();
     }
 
@@ -161,15 +161,15 @@ class TileWidget extends StatelessWidget {
         width: _getTileWidth(),
         imagePath: tile.getFullAssetPath(),
         rect: tile.getRect(),
-        scaleFactor:
-            scale * AssetHelper().getScaleFactorFromTileType(tile.tileType),
+        scaleFactor: scale *
+            AssetHelper().getScaleFactorFromTileType(tile.trueTileType),
       );
-    } else if (tile.tileType == TileType.ThroneRoom) {
+    } else if (tile.trueTileType == TileType.ThroneRoom) {
       child = Image(
         image: AssetImage(tile.getFullAssetPath()),
         fit: BoxFit.contain,
       );
-    } else if (tile.tileType == TileType.Empty) {
+    } else if (tile.trueTileType == TileType.Empty) {
       child = Container(
         child: Material(
           color: showInvalidBadge

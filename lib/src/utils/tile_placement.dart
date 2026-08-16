@@ -193,7 +193,7 @@ class TilePlacement {
     }
 
     final level = levelRelativeToGround(grid, index);
-    if (level != null && !isTypeAllowedAtLevel(tile.tileType, level)) {
+    if (level != null && !isTypeAllowedAtLevel(tile.trueTileType, level)) {
       return false;
     }
 
@@ -242,7 +242,7 @@ class TilePlacement {
     if (level == CastleLevel.below && !hasSupportAbove(grid, index)) {
       reasons.add(PlacementInvalidReason.unsupportedBelowGround);
     }
-    if (level != null && !isTypeAllowedAtLevel(tile.tileType, level)) {
+    if (level != null && !isTypeAllowedAtLevel(tile.trueTileType, level)) {
       reasons.add(PlacementInvalidReason.wrongTypeForLevel);
     }
     return reasons;

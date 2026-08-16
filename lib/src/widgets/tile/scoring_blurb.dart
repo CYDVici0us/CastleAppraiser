@@ -89,6 +89,9 @@ class ScoringBlurb extends StatelessWidget {
   }) {
     if (tile.isEmpty() || tile.isPlaceholder()) return const [];
 
+    // Secrets copy another room for scoring only; UI always shows the arrow.
+    if (tile.isSecret()) return const [];
+
     if (tile.isThroneRoom()) {
       return _throneRuns(tile);
     }

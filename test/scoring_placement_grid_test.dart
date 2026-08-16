@@ -1,4 +1,5 @@
 import 'package:btcc/src/models/exports.dart';
+import 'package:btcc/src/widgets/tile/scoring_blurb.dart';
 import 'package:btcc/src/widgets/tile/scoring_placement_grid.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -90,6 +91,21 @@ void main() {
 
     test('shows for secret tiles', () {
       expect(ScoringPlacementMapping.shouldShow(RideTheDumbWaiter()), isTrue);
+    });
+
+    test('keeps printed arrow when scoring duplicate is set', () {
+      final secret = ClimbTheLadder()
+        ..duplicate = ArtSupplies(); // Connected Outdoor utility
+      expect(secret.isSecret(), isTrue);
+      expect(ScoringPlacementMapping.shouldShow(secret), isTrue);
+      expect(
+        ScoringPlacementMapping.secretArrow(secret.baseScoringPositions),
+        PlacementArrow.down,
+      );
+      expect(ScoringBlurb.hasContent(secret), isFalse);
+      final grid = ScoringPlacementGrid.forTile(secret);
+      expect(grid.arrowOnly, isTrue);
+      expect(grid.arrow, PlacementArrow.down);
     });
   });
 

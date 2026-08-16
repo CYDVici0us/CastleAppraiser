@@ -138,7 +138,7 @@ class _TileCategoryPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final typesWithTiles = allowedTypes.where((type) {
-      return availableTiles.any((tile) => tile.tileType == type);
+      return availableTiles.any((tile) => tile.trueTileType == type);
     }).toList();
 
     return Scaffold(
@@ -156,7 +156,7 @@ class _TileCategoryPage extends StatelessWidget {
               itemBuilder: (context, index) {
                 final type = typesWithTiles[index];
                 final count =
-                    availableTiles.where((t) => t.tileType == type).length;
+                    availableTiles.where((t) => t.trueTileType == type).length;
                 return ListTile(
                   leading: _CategoryLeading(type: type),
                   title: Text(tileTypeDisplayName(type)),
@@ -168,7 +168,7 @@ class _TileCategoryPage extends StatelessWidget {
                         builder: (_) => _TileListPage(
                           type: type,
                           tiles: availableTiles
-                              .where((t) => t.tileType == type)
+                              .where((t) => t.trueTileType == type)
                               .toList(),
                         ),
                       ),
@@ -254,8 +254,8 @@ class _TileListPage extends StatelessWidget {
 }
 
 String _pickerDisplayName(Tile tile) {
-  if (TokenTileGrid.isTokenType(tile.tileType) ||
-      tile.tileType == TileType.Special) {
+  if (TokenTileGrid.isTokenType(tile.trueTileType) ||
+      tile.trueTileType == TileType.Special) {
     return TokenTileGrid.displayName(tile);
   }
   return tile.name;

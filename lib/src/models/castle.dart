@@ -101,7 +101,6 @@ class Castle {
   int getScore() {
     if (castleScoreCard == null) {
       scoreCastle([]);
-      castleScoreCard = new ScoreCard(tileScores);
     }
     return castleScoreCard!.total;
   }
@@ -110,7 +109,18 @@ class Castle {
     return '${getScore()}';
   }
 
+  /// Re-resolve which room each Secret copies from the current grid.
+  /// Call after any layout change (DnD, place, neighbor swap).
+  void refreshSecretRoomDuplicates() {
+    _findDupesForAllSecretRooms();
+  }
+
   int scoreCastle(List<Castle> adjacentCastles) {
+    // Allow re-score after moves / neighbor edits (putIfAbsent + totals were sticky).
+    _resetScoringAccumulators();
+    for (final adj in adjacentCastles) {
+      adj._resetTypeTotals();
+    }
 
     // first resolve secret rooms to find which room they duplicate
     _findDupesForAllSecretRooms();
@@ -131,6 +141,13 @@ class Castle {
         continue;
       }
 
+      // Uncopied Secrets: record 0 under Secret; skip neighbor lookup.
+      if (currentlyScoringTile.trueTileType == TileType.Secret &&
+          currentlyScoringTile.duplicate == null) {
+        tileScores[currentlyScoringTile.id] = 0;
+        continue;
+      }
+
       List<Tile> tilesInScoringPositions;
 
       if (currentlyScoringTile.tileType == TileType.Utility
@@ -143,10 +160,16 @@ class Castle {
       }
 
       if (currentlyScoringTile.isBallRoom()) {
-        tileScores.putIfAbsent(currentlyScoringTile.id, () => _scoreBallRoomTile(currentlyScoringTile, adjacentCastles));
+        tileScores[currentlyScoringTile.id] =
+            _scoreBallRoomTile(currentlyScoringTile, adjacentCastles);
       }
       else {
-        tileScores.putIfAbsent(currentlyScoringTile.id, () => _scoreTile(currentlyScoringTile, tilesInScoringPositions, adjacentCastles, i));
+        tileScores[currentlyScoringTile.id] = _scoreTile(
+          currentlyScoringTile,
+          tilesInScoringPositions,
+          adjacentCastles,
+          i,
+        );
       }
     }
 
@@ -158,17 +181,63 @@ class Castle {
     // Update scorecard
     castleScoreCard = new ScoreCard(tileScores);
 
+    // TileHelper returns shared instances; leave Secrets un-proxied after scoring.
+    _clearSecretDuplicates();
+    adjacentCastles.forEach((x) => x._clearSecretDuplicates());
+
     return total;
   }
 
+  void _resetScoringAccumulators() {
+    tileScores = {};
+    castleScoreCard = null;
+    _resetTypeTotals();
+  }
+
+  void _resetTypeTotals() {
+    castleTotaled = false;
+    totalTorches = 0;
+    totalMirrors = 0;
+    totalPaintings = 0;
+    totalSwords = 0;
+    totalSecret = 0;
+    totalCorridor = 0;
+    totalDownstairs = 0;
+    totalFood = 0;
+    totalLiving = 0;
+    totalOutdoor = 0;
+    totalActivity = 0;
+    totalSleeping = 0;
+    totalSpecial = 0;
+    totalUtility = 0;
+    totalBallroom = 0;
+    totalTower = 0;
+    totalFountain = 0;
+    totalGrandFoyer = 0;
+    isSleepingComplete = false;
+    totalOSurroundedTile = 0;
+    totalCSurroundedTile = 0;
+    totalRA = 0;
+  }
+
+  void _clearSecretDuplicates() {
+    for (final tile in castleTiles.items) {
+      if (tile.isSecret()) {
+        tile.duplicate = null;
+      }
+    }
+  }
+
   void _findDupesForAllSecretRooms() {
+    // Drop stale proxies so arrow walks use each Secret's own positions
+    // and so a moved Secret / changed neighbor rebinds correctly.
+    _clearSecretDuplicates();
     for (int i = 0; i < castleTiles.items.length; i++) {
       Tile tile = castleTiles.items[i];
       if (tile.isSecret()) {
         int dupedIndex = _getDupedTileIndex(tile, i);
         if (dupedIndex != -1) {
-          Tile dupe = castleTiles.items[dupedIndex];
-          tile.duplicate = dupe;
+          tile.duplicate = castleTiles.items[dupedIndex];
         }
       }
     }
@@ -303,7 +372,14 @@ class Castle {
     List<int> checkedIndexes = [];
     while (keepSearching) {
       Tile currentTile = castleTiles.items[dupedIndex];
-      ScoringPosition nextTilePosition = currentTile.scoringPositions.first;
+      // Always follow the Secret's printed arrow, never a scoring duplicate.
+      final positions = currentTile.isSecret()
+          ? currentTile.baseScoringPositions
+          : currentTile.scoringPositions;
+      if (positions.isEmpty) {
+        return -1;
+      }
+      ScoringPosition nextTilePosition = positions.first;
       int nextIndex = dupedIndex;
       switch (nextTilePosition) {
         case ScoringPosition.N:
@@ -328,35 +404,31 @@ class Castle {
         return -1;
       }
 
-      // if we come across an index we've already checked, then there is a
-      // cycle of secret rooms pointing to each other, meaning
-      // the tile is considered to not be pointing to any scoring tile
+      // Cycle of Secrets pointing at each other → no copy.
       if (checkedIndexes.contains(nextIndex)) {
         return -1;
       }
 
       Tile nextTile = castleTiles.items[nextIndex];
 
-      // Secret rooms do not score if they point at specialty rooms
-      if (nextTile.trueTileType == TileType.Special
+      // Empty / specialty (throne, tower, fountain, ballroom, grand foyer) /
+      // tokens: placement is allowed, but Secrets do not copy them (score 0).
+      if (nextTile.isEmpty()
+        || nextTile.isSpecialtyRoom()
         || nextTile.trueTileType == TileType.Placeholder
-        || nextTile.trueTileType == TileType.ThroneRoom
         || nextTile.trueTileType == TileType.RoyalAttendant
         || nextTile.trueTileType == TileType.BonusCard
       ) {
         return -1;
       }
 
-      // if the secret tile is pointing to a NON secret tile, then
-      // we found the dupe
+      // Found a regular room — every Secret in this chain copies it.
       if (nextTile.trueTileType != TileType.Secret) {
         return nextIndex;
       }
 
-      // if the secret tile is pointing to a secret tile, then we need to
-      // find which tile that one is pointing to
-      // keeping track of which ones we've looked at to detect cycles
-      checkedIndexes.add(index);
+      // Pointing at another Secret: follow that Secret's arrow.
+      checkedIndexes.add(dupedIndex);
       dupedIndex = nextIndex;
     }
 
@@ -733,6 +805,11 @@ class Castle {
   int _scoreTile(Tile tile, List<Tile> tilesInScoringPositions,
       List<Castle> adjacentCastles, int index
   ) {
+    // Secret with no valid copy target: 0 points, still tracked as Secret.
+    if (tile.trueTileType == TileType.Secret && tile.duplicate == null) {
+      return 0;
+    }
+
     if (tile.tileType == TileType.BonusCard) {
       return _scoreBonusCard(tile, adjacentCastles);
     }

@@ -128,6 +128,8 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
 
   void _syncCastleFromParts() {
     _castle = Castle(_mergedGrid());
+    // Secrets rebind to whatever their arrow points at after DnD / place / neighbor edits.
+    _castle.refreshSecretRoomDuplicates();
   }
 
   void _refreshAvailableTiles() {
@@ -239,6 +241,7 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
       _selectedIndex = index;
       _panelIndex = index;
       _selectedTokenIndex = null;
+      _tokenStripExpanded = false;
       _clearSearchState();
     });
     if (opening) {
@@ -287,6 +290,10 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
   }
 
   void _placeTileAt(int index, Tile tile) {
+    // Shared TileHelper instances may retain a stale Secret copy target.
+    if (tile.isSecret()) {
+      tile.duplicate = null;
+    }
     final existing = _castleTiles.items[index];
     if (existing.isEmpty()) {
       if (!_canAddAt(index) || !_canPlaceTileAt(index, tile)) {
@@ -504,10 +511,13 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     final theme = Theme.of(context);
     final isEmpty = tile.isEmpty();
     final isThrone = tile.isThroneRoom();
+    final isSecret = tile.isSecret();
+    // Secrets keep printed identity in the details panel (never scoring duplicate).
+    final displayType = isSecret ? tile.trueTileType : tile.tileType;
     final title = isEmpty
         ? 'Empty cell'
-        : tile.tileType == TileType.Special ||
-                TokenTileGrid.isTokenType(tile.tileType)
+        : displayType == TileType.Special ||
+                TokenTileGrid.isTokenType(displayType)
             ? TokenTileGrid.displayName(tile)
             : tile.name;
     final showScoring =
@@ -523,7 +533,9 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     final scoringStyle = theme.textTheme.bodyMedium?.copyWith(
       color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
     );
-    final decorationLabel = !isEmpty && tile.decorationType != DecorationType.None
+    final decorationLabel = !isEmpty &&
+            !isSecret &&
+            tile.decorationType != DecorationType.None
         ? TokenTileGrid.humanizeCamelCase(
             tile.decorationType.toString().split('.').last,
           )
@@ -533,65 +545,87 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const Spacer(),
-            IconButton(
-              tooltip: 'Clear selection',
-              icon: const Icon(Icons.close),
-              visualDensity: VisualDensity.compact,
-              onPressed: _clearGridSelection,
+            // Balance the close button so the title stays visually centered.
+            const SizedBox(width: 48),
+            Expanded(
+              child: ScoringBlurb.titleWithCategories(
+                title: title,
+                style: titleStyle,
+                textAlign: TextAlign.center,
+              ),
+            ),
+            SizedBox(
+              width: 48,
+              child: IconButton(
+                tooltip: 'Clear selection',
+                icon: const Icon(Icons.close),
+                visualDensity: VisualDensity.compact,
+                onPressed: _clearGridSelection,
+              ),
             ),
           ],
         ),
-        ScoringBlurb.titleWithCategories(
-          title: title,
-          style: titleStyle,
-          textAlign: TextAlign.center,
-        ),
         if (!isEmpty) ...[
           const SizedBox(height: 8),
-          Row(
-            children: [
-              _selectedTileCategoryLeading(tile.tileType),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  tileTypeDisplayName(tile.tileType),
-                  style: metaStyle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (decorationLabel != null)
-                Text(
-                  decorationLabel,
-                  style: metaStyle,
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
           if (isThrone)
             LayoutBuilder(
               builder: (context, constraints) {
                 final scale = constraints.maxWidth /
                     (TileWidget.defaultTileWidthHeight * 2);
-                return TileWidget(
-                  tile,
-                  scale: scale,
-                  showOutline: true,
-                  showInvalidBadge: invalids.isNotEmpty,
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _selectedTileMetaRow(
+                      displayType: displayType,
+                      decorationLabel: decorationLabel,
+                      metaStyle: metaStyle,
+                      width: constraints.maxWidth,
+                    ),
+                    const SizedBox(height: 8),
+                    TileWidget(
+                      tile,
+                      scale: scale,
+                      showOutline: true,
+                      showInvalidBadge: invalids.isNotEmpty,
+                    ),
+                  ],
                 );
               },
             )
-          else
-            Center(
-              child: TileWidget(
-                tile,
-                scale: 1.7,
-                showOutline: true,
-                showInvalidBadge: invalids.isNotEmpty,
-              ),
+          else ...[
+            Builder(
+              builder: (context) {
+                const imageScale = 1.7;
+                final imageWidth =
+                    TileWidget.defaultTileWidthHeight * imageScale;
+                return Center(
+                  child: SizedBox(
+                    width: imageWidth,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _selectedTileMetaRow(
+                          displayType: displayType,
+                          decorationLabel: decorationLabel,
+                          metaStyle: metaStyle,
+                          width: imageWidth,
+                        ),
+                        const SizedBox(height: 8),
+                        TileWidget(
+                          tile,
+                          scale: imageScale,
+                          showOutline: true,
+                          showInvalidBadge: invalids.isNotEmpty,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
+          ],
           if (showScoring) ...[
             const SizedBox(height: 12),
             ScoringBlurb(
@@ -628,6 +662,64 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
           ),
         ],
       ],
+    );
+  }
+
+  Widget _selectedTileMetaRow({
+    required TileType displayType,
+    required String? decorationLabel,
+    required TextStyle? metaStyle,
+    required double width,
+  }) {
+    final category = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _selectedTileCategoryLeading(displayType),
+        const SizedBox(width: 8),
+        Text(
+          tileTypeDisplayName(displayType),
+          style: metaStyle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+
+    if (decorationLabel == null) {
+      return SizedBox(
+        width: width,
+        child: Center(child: category),
+      );
+    }
+
+    // Center category over the left corner and ornament over the right.
+    return SizedBox(
+      width: width,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          // Reserve vertical space for the meta row.
+          Opacity(opacity: 0, child: category),
+          Positioned(
+            left: 0,
+            child: FractionalTranslation(
+              translation: const Offset(-0.5, 0),
+              child: category,
+            ),
+          ),
+          Positioned(
+            right: 0,
+            child: FractionalTranslation(
+              translation: const Offset(0.5, 0),
+              child: Text(
+                decorationLabel,
+                style: metaStyle,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1138,6 +1230,10 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
         onDragItem: (int index) {
           var copy = _castleTiles;
           var item = copy.items[index];
+          // Drop any stale Secret copy target; rebinding happens on drop/sync.
+          if (item.isSecret()) {
+            item.duplicate = null;
+          }
           if (item.tileType == TileType.ThroneRoom) {
             copy.items[index] = Empty();
             copy.items[index + 1] = Empty();
@@ -1191,7 +1287,9 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
         selected != null ? _allowedTypesForIndex(selected) : null;
     return _allTiles.where((element) {
       if (!element.name.toLowerCase().contains(text)) return false;
-      if (allowed != null && !allowed.contains(element.tileType)) return false;
+      if (allowed != null && !allowed.contains(element.trueTileType)) {
+        return false;
+      }
       if (selected != null) {
         final existing = _castleTiles.items[selected];
         final ok = existing.isEmpty()

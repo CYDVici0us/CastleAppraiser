@@ -27,12 +27,16 @@ class Tile {
   List<ScoringPosition> get scoringPositions {
     return duplicate != null ? duplicate!.scoringPositions : _scoringPositions;
   }
+  /// Baked-in positions (Secret copy arrow, etc.) — ignores [duplicate].
+  List<ScoringPosition> get baseScoringPositions => _scoringPositions;
   final ScoringCondition _scoringCondition;
   ScoringCondition get scoringCondition {
     return duplicate != null ? duplicate!.scoringCondition : _scoringCondition;
   }
 
   ScoringCondition throneRoomCondition;
+  /// When set by scoring, proxies type/score fields to the copied room.
+  /// Shared [TileHelper] instances must clear this after scoring / before UI.
   Tile? duplicate;
 
   // assume image atlases are a grid only images of same size
@@ -95,7 +99,8 @@ class Tile {
   String getFullAssetPath() => '$localImageLocation';
 
   Rect getRect() {
-    Offset size = AssetHelper().tileSizeInImageFromTileType(tileType);
+    // Atlas layout follows the printed tile, not a Secret's scoring duplicate.
+    Offset size = AssetHelper().tileSizeInImageFromTileType(trueTileType);
     double x = offsetInImage.dx * size.dx;
     double y = offsetInImage.dy * size.dy;
     return Rect.fromLTWH(x, y, size.dx, size.dy);
@@ -106,7 +111,7 @@ class Tile {
   }
 
   bool isSecret() {
-    return this.tileType == TileType.Secret;
+    return trueTileType == TileType.Secret;
   }
 
   bool isNotEmpty() {
@@ -156,8 +161,8 @@ class Tile {
 
   // shield rooms, aka fountain, grand foyer, tower, ballroom, thronerooms
   bool isSpecialtyRoom() {
-    return tileType == TileType.Special
-        || tileType == TileType.ThroneRoom;
+    return trueTileType == TileType.Special
+        || trueTileType == TileType.ThroneRoom;
   }
 
   bool isBonusCard() {

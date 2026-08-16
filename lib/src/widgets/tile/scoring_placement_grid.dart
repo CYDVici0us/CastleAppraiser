@@ -39,6 +39,10 @@ class ScoringPlacementMapping {
   static bool shouldShow(Tile tile) {
     if (tile.isEmpty() || tile.isPlaceholder()) return false;
     if (tile.isBonusCard() || tile.isRoyalAttendant()) return false;
+    // Secrets always use their printed copy-direction arrow (never a duplicate).
+    if (tile.isSecret()) {
+      return secretArrow(tile.baseScoringPositions) != PlacementArrow.none;
+    }
     final positions = tile.scoringPositions;
     if (positions.isEmpty) return false;
     if (positions.contains(ScoringPosition.Type) ||
@@ -48,9 +52,6 @@ class ScoringPlacementMapping {
     }
     if (tile.scoringCondition == ScoringCondition.Always) return false;
     if (tile.isThroneRoom()) return true;
-    if (tile.isSecret() && secretArrow(positions) != PlacementArrow.none) {
-      return true;
-    }
     if (positions.any((p) =>
         p == ScoringPosition.Above ||
         p == ScoringPosition.Below ||
@@ -234,7 +235,8 @@ class ScoringPlacementGrid extends StatelessWidget {
   factory ScoringPlacementGrid.forTile(Tile tile, {double? cellSize}) {
     final size = cellSize ?? (tile.isThroneRoom() ? 16.0 : 18.0);
     if (tile.isSecret()) {
-      final secret = ScoringPlacementMapping.secretArrow(tile.scoringPositions);
+      final secret =
+          ScoringPlacementMapping.secretArrow(tile.baseScoringPositions);
       if (secret != PlacementArrow.none) {
         return ScoringPlacementGrid._(
           cells: const [],

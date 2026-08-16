@@ -64,9 +64,9 @@ class TileHelper {
     return listOfAllTiles.where((x) => x.tileType == TileType.ThroneRoom).toList();
   }
 
-  // Used in score card creation.
+  // Used in score card creation (printed type, not Secret scoring duplicate).
   TileType getTileTypeById(TileId id){
-    return getTileById(id).tileType;
+    return getTileById(id).trueTileType;
   }
 
   Tile getTileByLabel(TileLabels label) {
