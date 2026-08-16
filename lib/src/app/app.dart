@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:btcc/src/state/camera_store.dart';
 import 'package:btcc/src/state/data_store.dart';
 import 'package:btcc/src/state/tf_store.dart';
+import 'package:btcc/src/utils/asset_helper.dart';
 import 'package:btcc/src/utils/image_helper.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -14,15 +15,16 @@ import 'app_widget.dart';
 class App extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    var getDir = () async {
+    Future<String> getDir() async {
       if (kIsWeb || Platform.isWindows) {
         return '';
       }
-      else {
-        var dir = await getExternalStorageDirectory();
-        return ImageHelper.getFullImagePath(dir!.path);
-      }
-    };
+      // Prefer app-specific external storage; fall back to documents if null
+      // (scoped storage / some OEM builds).
+      final dir = await getExternalStorageDirectory() ??
+          await getApplicationDocumentsDirectory();
+      return ImageHelper.getFullImagePath(dir.path);
+    }
 
     return MultiProvider(
       providers: [
@@ -30,14 +32,69 @@ class App extends StatelessWidget {
         ChangeNotifierProvider<TfStore>(create: (_) => TfStore()),
         ChangeNotifierProvider<DataStore>(create: (_) => DataStore(getDir)),
       ],
-      child: AppWidget(),
-      // child: BetterFeedback(
-      //   child: AppWidget(),
-      //   onFeedback: (BuildContext ctx, String feedbackText, Uint8List feedbackScreenshot) {
-      //     alertFeedbackFunction(ctx, feedbackText, feedbackScreenshot);
-      //     //BetterFeedback.of(ctx).hide();
-      //   }
-      // ),
+      child: _AssetBootstrap(child: AppWidget()),
+    );
+  }
+}
+
+/// Loads tile atlases after the first frame so the native splash can dismiss.
+class _AssetBootstrap extends StatefulWidget {
+  _AssetBootstrap({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_AssetBootstrap> createState() => _AssetBootstrapState();
+}
+
+class _AssetBootstrapState extends State<_AssetBootstrap> {
+  late final Future<void> _assetsReady = AssetHelper().init();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _assetsReady,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return MaterialApp(
+            themeMode: ThemeMode.dark,
+            theme: ThemeData(
+              useMaterial3: true,
+              brightness: Brightness.dark,
+              scaffoldBackgroundColor: const Color(0xFF121212),
+            ),
+            home: const Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(),
+              ),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return MaterialApp(
+            themeMode: ThemeMode.dark,
+            theme: ThemeData(
+              useMaterial3: true,
+              brightness: Brightness.dark,
+              scaffoldBackgroundColor: const Color(0xFF121212),
+            ),
+            home: Scaffold(
+              body: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    'Failed to load assets:\n${snapshot.error}',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
+        return widget.child;
+      },
     );
   }
 }

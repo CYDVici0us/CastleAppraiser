@@ -1,12 +1,12 @@
-import 'package:btcc/src/app/app.dart';
-import 'package:btcc/src/utils/asset_helper.dart';
-import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, kReleaseMode;
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/services.dart';
 import 'dart:io';
+
+import 'package:btcc/src/app/app.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, kReleaseMode;
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 Future<void> main() async {
   if (kReleaseMode) {
@@ -15,35 +15,41 @@ Future<void> main() async {
 
   WidgetsFlutterBinding.ensureInitialized();
 
-  if (!Platform.isWindows) {
-    await Firebase.initializeApp();
-  }
+  // Orientation only — never gate the first frame on Firebase/assets.
+  // Firebase.initializeApp can hang indefinitely on some Samsung devices;
+  // AssetHelper atlas decode is heavy (~200MB+) and used to block splash.
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-  // Dump errors to console always,
-  // but on release mode dump to crashlytics
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.dumpErrorToConsole(details);
-    if (kReleaseMode) {
-      FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterError;
+    if (kReleaseMode && !kIsWeb && !Platform.isWindows) {
+      // Best-effort; Firebase may still be initializing.
+      unawaited(FirebaseCrashlytics.instance.recordFlutterError(details));
     }
   };
 
-  if (!kIsWeb && !Platform.isWindows) {
-    if (kDebugMode) {
-      // Force disable Crashlytics collection while doing every day development.
-      // Temporarily toggle this to true if you want to test crash reporting in your app.
-      await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(false);
-    } else {
-      // Handle Crashlytics enabled status when not in Debug,
-      // e.g. allow your users to opt-in to crash reporting.
-      await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
-    }
-  }
-
-  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-
-  // load assets
-  await new AssetHelper().init();
+  unawaited(_initFirebaseAndCrashlytics());
 
   runApp(App());
+}
+
+Future<void> _initFirebaseAndCrashlytics() async {
+  if (kIsWeb || Platform.isWindows) {
+    return;
+  }
+
+  try {
+    await Firebase.initializeApp().timeout(const Duration(seconds: 6));
+  } catch (_) {
+    // Timed out or failed — continue without Firebase rather than hang forever.
+    return;
+  }
+
+  try {
+    await FirebaseCrashlytics.instance
+        .setCrashlyticsCollectionEnabled(!kDebugMode)
+        .timeout(const Duration(seconds: 3));
+  } catch (_) {
+    // Ignore Crashlytics setup failures.
+  }
 }
