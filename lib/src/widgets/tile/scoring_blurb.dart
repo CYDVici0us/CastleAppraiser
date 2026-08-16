@@ -163,14 +163,16 @@ class ScoringBlurb extends StatelessWidget {
     return runs;
   }
 
-  /// Sleeping: +4 with ≥6 regular room types in the castle, else +1.
+  /// Sleeping: +4 with ≥6 of the 7 regular types (not Sleeping), else +1.
   static List<_ScoringRun> _sleepingRuns(
     Tile tile, {
     bool includeDecoration = true,
   }) {
     final runs = <_ScoringRun>[
-      const _ScoringRun('+4 if ≥6 regular room types'),
-      const _ScoringRun('+1 otherwise', lineBreakBefore: true),
+      const _ScoringRun(
+        '+4 if ≥6 of Food, Living, Utility, Outdoor, Corridor, Activity, Downstairs',
+      ),
+      const _ScoringRun('+1 otherwise (Sleeping does not count)', lineBreakBefore: true),
     ];
 
     if (includeDecoration && tile.decorationType != DecorationType.None) {

@@ -171,16 +171,25 @@ void main() {
   });
 
   group('Sleeping score details', () {
-    test('blurb describes +4 / +1 rule, not per SleepingRoom', () {
+    test('blurb lists official 7 types with Downstairs after Activity', () {
       final tile = PuppyRoom();
       expect(ScoringBlurb.hasContent(tile), isTrue);
       final text = ScoringBlurb.runsTextFor(tile).join();
-      expect(text, contains('+4 if ≥6 regular room types'));
-      expect(text, contains('+1 otherwise'));
+      expect(
+        text,
+        contains(
+          '+4 if ≥6 of Food, Living, Utility, Outdoor, Corridor, Activity, Downstairs',
+        ),
+      );
+      expect(text, contains('+1 otherwise (Sleeping does not count)'));
       expect(text.toLowerCase(), isNot(contains('per sleeping')));
+      final activityAt = text.indexOf('Activity');
+      final downstairsAt = text.indexOf('Downstairs');
+      expect(activityAt, greaterThan(-1));
+      expect(downstairsAt, greaterThan(activityAt));
     });
 
-    test('shows 2×3 regular types diagram', () {
+    test('shows regular types diagram', () {
       expect(ScoringPlacementMapping.shouldShow(PuppyRoom()), isTrue);
     });
   });

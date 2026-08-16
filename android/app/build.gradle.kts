@@ -22,6 +22,12 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Play's 16 KB check is for 64-bit only; ship arm64-v8a to avoid
+        // Studio/Play noise from 32-bit and emulator x86_64 prebuilts.
+        ndk {
+            abiFilters.clear()
+            abiFilters.add("arm64-v8a")
+        }
     }
 
     buildTypes {
@@ -31,6 +37,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            ndk {
+                abiFilters.clear()
+                abiFilters.add("arm64-v8a")
+            }
         }
     }
 
@@ -42,6 +52,11 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = false
+            excludes += setOf(
+                "**/armeabi-v7a/**",
+                "**/x86/**",
+                "**/x86_64/**",
+            )
         }
     }
 }

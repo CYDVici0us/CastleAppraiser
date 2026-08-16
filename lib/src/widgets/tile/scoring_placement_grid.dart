@@ -61,7 +61,7 @@ class ScoringPlacementMapping {
     if (tile.isBonusCard() || tile.isRoyalAttendant()) return false;
     // Activity: two fixed diagrams (cardinal + surrounding).
     if (tile.tileType == TileType.Activity) return true;
-    // Sleeping: 2×3 regular room-type color grid.
+    // Sleeping: regular room-type color grid (7 types, not Sleeping).
     if (tile.scoringCondition == ScoringCondition.SleepingRoom) return true;
     // Secrets always use their printed copy-direction arrow (never a duplicate).
     if (tile.isSecret()) {
@@ -472,20 +472,25 @@ class ScoringPlacementGrid extends StatelessWidget {
   }
 }
 
-/// 2×3 color grid of the six regular room types for Sleeping scoring.
-/// Row 1: orange, yellow, blue · Row 2: purple, grey, green.
+/// Color grid of the seven regular room types for Sleeping scoring
+/// (Sleeping itself does not count). Order ends Activity, then Downstairs.
+/// Row 1: Food, Living, Utility, Outdoor · Row 2: Corridor, Activity, Downstairs.
 class SleepingTypesGrid extends StatelessWidget {
   final double cellSize;
 
   const SleepingTypesGrid({super.key, this.cellSize = 16});
 
-  static const _colors = [
+  static const _row1 = [
     Color(0xFFE67E22), // orange — Food
     Color(0xFFF1C40F), // yellow — Living
     Color(0xFF3498DB), // blue — Utility
-    Color(0xFF9B59B6), // purple — Sleeping
-    Color(0xFF95A5A6), // grey — Corridor
     Color(0xFF27AE60), // green — Outdoor
+  ];
+
+  static const _row2 = [
+    Color(0xFF95A5A6), // grey — Corridor
+    Color(0xFFE91E63), // pink — Activity
+    Color(0xFF8D6E63), // brown — Downstairs
   ];
 
   @override
@@ -494,29 +499,32 @@ class SleepingTypesGrid extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        for (var row = 0; row < 2; row++) ...[
-          if (row > 0) const SizedBox(height: gap),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var col = 0; col < 3; col++) ...[
-                if (col > 0) const SizedBox(width: gap),
-                SizedBox(
-                  width: cellSize,
-                  height: cellSize,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: _colors[row * 3 + col],
-                      borderRadius: BorderRadius.circular(3),
-                      border: Border.all(
-                        color: const Color(0xFFE0E0E0),
-                        width: 1,
-                      ),
-                    ),
-                  ),
+        _colorRow(_row1, gap),
+        const SizedBox(height: gap),
+        _colorRow(_row2, gap),
+      ],
+    );
+  }
+
+  Widget _colorRow(List<Color> colors, double gap) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < colors.length; i++) ...[
+          if (i > 0) SizedBox(width: gap),
+          SizedBox(
+            width: cellSize,
+            height: cellSize,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: colors[i],
+                borderRadius: BorderRadius.circular(3),
+                border: Border.all(
+                  color: const Color(0xFFE0E0E0),
+                  width: 1,
                 ),
-              ],
-            ],
+              ),
+            ),
           ),
         ],
       ],
