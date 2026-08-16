@@ -181,8 +181,18 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
     }
   }
 
-  /// Fills available space with cover-fit. Avoids orientation-specific
-  /// width/height formulas that lag one rotation behind.
+  /// Same landscape check CameraPreview uses when choosing its AspectRatio.
+  double _previewAspectRatio(CameraValue value) {
+    final orientation = value.previewPauseOrientation ??
+        value.lockedCaptureOrientation ??
+        value.deviceOrientation;
+    final isLandscape = orientation == DeviceOrientation.landscapeLeft ||
+        orientation == DeviceOrientation.landscapeRight;
+    return isLandscape ? value.aspectRatio : 1 / value.aspectRatio;
+  }
+
+  /// Fills available space with cover-fit. Child size tracks CameraPreview's
+  /// portrait/landscape aspect so portrait is not a cropped landscape frame.
   Widget _cameraPreviewWidget(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -218,15 +228,21 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
         child: SizedBox.expand(
           child: !controller.value.isInitialized
               ? const SizedBox.shrink()
-              : FittedBox(
-                  fit: BoxFit.cover,
-                  clipBehavior: Clip.hardEdge,
-                  child: SizedBox(
-                    // Match CameraPreview's AspectRatio so FittedBox can scale it.
-                    width: 1000,
-                    height: 1000 / controller.value.aspectRatio,
-                    child: CameraPreview(controller),
-                  ),
+              : ValueListenableBuilder<CameraValue>(
+                  valueListenable: controller,
+                  builder: (context, value, child) {
+                    final previewAspect = _previewAspectRatio(value);
+                    return FittedBox(
+                      fit: BoxFit.cover,
+                      clipBehavior: Clip.hardEdge,
+                      child: SizedBox(
+                        width: 1000,
+                        height: 1000 / previewAspect,
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: CameraPreview(controller),
                 ),
         ),
       ),

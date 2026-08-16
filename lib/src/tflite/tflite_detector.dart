@@ -107,9 +107,14 @@ class TfliteDetector {
       throw StateError('TFLite model is not loaded');
     }
 
-    // Match native plugin: store swapped original dims for post-rotation mapping.
-    final originalImageWidth = image.height.toDouble();
-    final originalImageHeight = image.width.toDouble();
+    // Odd 90° rotations swap width/height relative to the decoded bitmap.
+    // Landscape EXIF Normal uses rotations=0; always-swapping dropped boxes
+    // (including small throne-room detections) after remapping.
+    final swapDims = rotations.isOdd;
+    final originalImageWidth =
+        (swapDims ? image.height : image.width).toDouble();
+    final originalImageHeight =
+        (swapDims ? image.width : image.height).toDouble();
 
     final input = _preprocess(
       image: image,
