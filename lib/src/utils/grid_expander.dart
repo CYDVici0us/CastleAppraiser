@@ -354,4 +354,32 @@ class GridListNormalizer {
     }
     return false;
   }
+
+  /// Empty cell strictly inside the bounding box of occupied cells (internal gaps).
+  static bool isEmptyInsideOccupiedBounds<T extends Object>(
+    GridList<T> grid,
+    int index, {
+    required GridListValidItemCheck<T> isOccupied,
+  }) {
+    if (index < 0 || index >= grid.items.length) return false;
+    if (isOccupied(grid.items[index])) return false;
+
+    int? minX, maxX, minY, maxY;
+    for (int i = 0; i < grid.items.length; i++) {
+      if (!isOccupied(grid.items[i])) continue;
+      final x = i % grid.width;
+      final y = i ~/ grid.width;
+      minX = minX == null ? x : (x < minX ? x : minX);
+      maxX = maxX == null ? x : (x > maxX ? x : maxX);
+      minY = minY == null ? y : (y < minY ? y : minY);
+      maxY = maxY == null ? y : (y > maxY ? y : maxY);
+    }
+    if (minX == null || maxX == null || minY == null || maxY == null) {
+      return false;
+    }
+
+    final x = index % grid.width;
+    final y = index ~/ grid.width;
+    return x >= minX && x <= maxX && y >= minY && y <= maxY;
+  }
 }

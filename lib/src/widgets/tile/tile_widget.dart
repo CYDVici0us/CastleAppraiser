@@ -148,12 +148,16 @@ class TileWidget extends StatelessWidget {
     else if (tile.tileType == TileType.Empty){
       child = Container(
         child: Material(
-          color: emptyColor,
+          color: showInvalidBadge
+              ? const Color.fromARGB(255, 120, 40, 40)
+              : emptyColor,
         ),
         foregroundDecoration: BoxDecoration(
           border: Border.all(
-            width: 1,
-            color: showOutline ? Colors.grey : Colors.transparent
+            width: showInvalidBadge ? 2 : 1,
+            color: showInvalidBadge
+                ? Colors.redAccent
+                : (showOutline ? Colors.grey : Colors.transparent),
           ),
         ),
       );

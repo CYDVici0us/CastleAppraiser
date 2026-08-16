@@ -102,8 +102,12 @@ class _ExpandableGridMapViewState<T extends Object> extends State<ExpandableGrid
     required bool enabled,
   }) =>
       Material(
-        color: Colors.black54,
-        shape: const CircleBorder(),
+        color: Colors.blueGrey.shade700,
+        elevation: 4,
+        shadowColor: Colors.black87,
+        shape: const CircleBorder(
+          side: BorderSide(color: Colors.white70, width: 1.5),
+        ),
         child: IconButton(
           icon: Icon(icon, color: Colors.white),
           onPressed: enabled ? onPressed : null,

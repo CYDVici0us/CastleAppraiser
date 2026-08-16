@@ -1,23 +1,11 @@
 import 'package:btcc/src/models/exports.dart';
+import 'package:btcc/src/utils/tile_placement.dart';
 import 'package:btcc/src/widgets/tile/tile_type_widget.dart';
 import 'package:btcc/src/widgets/tile/tile_widget.dart';
 import 'package:flutter/material.dart';
 
 /// Placeable tile categories for the nested picker (excludes Empty, Placeholder, ThroneRoom).
-const List<TileType> kPlaceableTileTypes = [
-  TileType.Corridor,
-  TileType.Downstairs,
-  TileType.Food,
-  TileType.Living,
-  TileType.Outdoor,
-  TileType.Sleeping,
-  TileType.Special,
-  TileType.Utility,
-  TileType.Activity,
-  TileType.Secret,
-  TileType.RoyalAttendant,
-  TileType.BonusCard,
-];
+const List<TileType> kPlaceableTileTypes = kAllPickerTileTypes;
 
 bool _tileTypeHasCategoryImage(TileType type) {
   switch (type) {
@@ -50,21 +38,31 @@ String tileTypeDisplayName(TileType type) {
 }
 
 /// Shows a nested dialog: category list, then tiles filtered from [availableTiles].
+/// When [allowedTypes] is set, only those categories are shown.
 /// Returns the chosen [Tile], or null if cancelled.
 Future<Tile?> showTilePickerDialog({
   required BuildContext context,
   required List<Tile> availableTiles,
+  List<TileType>? allowedTypes,
 }) {
   return showDialog<Tile>(
     context: context,
-    builder: (context) => TilePickerDialog(availableTiles: availableTiles),
+    builder: (context) => TilePickerDialog(
+      availableTiles: availableTiles,
+      allowedTypes: allowedTypes,
+    ),
   );
 }
 
 class TilePickerDialog extends StatelessWidget {
   final List<Tile> availableTiles;
+  final List<TileType>? allowedTypes;
 
-  const TilePickerDialog({super.key, required this.availableTiles});
+  const TilePickerDialog({
+    super.key,
+    required this.availableTiles,
+    this.allowedTypes,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -76,7 +74,10 @@ class TilePickerDialog extends StatelessWidget {
         height: size.height * 0.7,
         child: Navigator(
           onGenerateRoute: (settings) => MaterialPageRoute(
-            builder: (_) => _TileCategoryPage(availableTiles: availableTiles),
+            builder: (_) => _TileCategoryPage(
+              availableTiles: availableTiles,
+              allowedTypes: allowedTypes ?? kPlaceableTileTypes,
+            ),
           ),
         ),
       ),
@@ -86,12 +87,16 @@ class TilePickerDialog extends StatelessWidget {
 
 class _TileCategoryPage extends StatelessWidget {
   final List<Tile> availableTiles;
+  final List<TileType> allowedTypes;
 
-  const _TileCategoryPage({required this.availableTiles});
+  const _TileCategoryPage({
+    required this.availableTiles,
+    required this.allowedTypes,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final typesWithTiles = kPlaceableTileTypes.where((type) {
+    final typesWithTiles = allowedTypes.where((type) {
       return availableTiles.any((tile) => tile.tileType == type);
     }).toList();
 

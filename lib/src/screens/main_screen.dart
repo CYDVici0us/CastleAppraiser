@@ -52,6 +52,8 @@ class MainScreen extends StatelessWidget {
           children: [
             Text('Not an official Stonemaier Games product.\n\nFor bug reports, feature requests, or general feedback please contact us via the "Send Feedback" button below.'),
             SizedBox(height: 16),
+            Text('Not currently available on iOS. I would gladly port the app if someone donates a MacBook for me to develop on.'),
+            SizedBox(height: 16),
             Text('Huge thanks and kudos to Mitch Hymel for the original Castle Appraiser.'),
             TextButton(
               style: TextButton.styleFrom(

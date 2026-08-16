@@ -50,7 +50,7 @@ class CastleTilesGrid extends StatelessWidget {
         scale: scaleToUse,
         emptyColor: Colors.transparent,
         showInvalidBadge:
-            TilePlacement.hasInvalidAboveOutdoorPlacement(castleTiles, i),
+            TilePlacement.hasInvalidPlacement(castleTiles, i),
       ));
     }
 
