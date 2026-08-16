@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:btcc/src/models/enums/identify_labels.dart';
 import 'package:btcc/src/utils/log.dart';
 import 'package:btcc/src/tflite/tflite_detector.dart';
+import 'package:btcc/src/tflite/tflite_helper.dart';
 import 'package:btcc/src/tflite/tflite_model.dart';
 import 'package:btcc/src/tflite/tflite_objects.dart';
 import 'package:btcc/src/utils/image_helper.dart';
@@ -144,6 +145,38 @@ class TfStore extends ChangeNotifier {
     await init(defaultModel, true);
   }
 
+  List<TfliteProcessedGuess> _parseGuesses(List<String> res) {
+    final guesses = <TfliteProcessedGuess>[];
+    for (final x in res) {
+      guesses.add(TfliteProcessedGuess.fromMap(jsonDecode(x)));
+    }
+    return guesses;
+  }
+
+  bool _hasThroneRoom(List<TfliteProcessedGuess> guesses) {
+    return guesses.any(TfliteHelper.isThroneRoom);
+  }
+
+  double _guessesQuality(List<TfliteProcessedGuess> guesses) {
+    return guesses.fold<double>(0, (sum, g) => sum + g.score) + guesses.length;
+  }
+
+  Future<List<String>> _detectRaw(String imagePath, int rotations) {
+    return _detector.detectOnImageFile(
+      path: imagePath,
+      inputImageSize: _inputImageSize,
+      scoreThreshold: _scoreThreshold,
+      overlapThreshold: _overlapThreshold,
+      mean: _mean,
+      std: _std,
+      rotations: rotations,
+      logExtra: false,
+    );
+  }
+
+  /// Runs detection using EXIF-derived rotation first. If no throne room is
+  /// found, tries the other 90° preprocess rotations so gallery / mis-tagged
+  /// images still parse regardless of orientation.
   Future<List<TfliteProcessedGuess>> runOnImage(String imagePath) async {
     logNow(tag: 'StartModel');
     _running = true;
@@ -165,20 +198,33 @@ class TfStore extends ChangeNotifier {
 
     log('Model: $_modelPath');
     log('Labels: $_labelsPath');
-    List<String> res = [];
+    var guesses = <TfliteProcessedGuess>[];
     try {
-      final rotations = await _getRotationsFromImageOrientation(imagePath);
+      final preferred = await _getRotationsFromImageOrientation(imagePath);
+      guesses = _parseGuesses(await _detectRaw(imagePath, preferred));
+      log('rotations=$preferred → ${guesses.length} guesses, '
+          'throne=${_hasThroneRoom(guesses)}');
 
-      res = await _detector.detectOnImageFile(
-        path: imagePath,
-        inputImageSize: _inputImageSize,
-        scoreThreshold: _scoreThreshold,
-        overlapThreshold: _overlapThreshold,
-        mean: _mean,
-        std: _std,
-        rotations: rotations,
-        logExtra: false,
-      );
+      if (!_hasThroneRoom(guesses)) {
+        var best = guesses;
+        var bestHasThrone = false;
+        var bestQuality = _guessesQuality(best);
+        for (final rotations in [0, 1, 2, 3]) {
+          if (rotations == preferred) continue;
+          final candidate =
+              _parseGuesses(await _detectRaw(imagePath, rotations));
+          final hasThrone = _hasThroneRoom(candidate);
+          final quality = _guessesQuality(candidate);
+          log('fallback rotations=$rotations → ${candidate.length} guesses, '
+              'throne=$hasThrone, quality=$quality');
+          if (hasThrone && (!bestHasThrone || quality > bestQuality)) {
+            best = candidate;
+            bestHasThrone = true;
+            bestQuality = quality;
+          }
+        }
+        guesses = best;
+      }
     } catch (ex) {
       log(ex);
     }
@@ -186,11 +232,6 @@ class TfStore extends ChangeNotifier {
     logNow(tag: 'EndModel');
     _running = false;
     notifyListeners();
-
-    final guesses = <TfliteProcessedGuess>[];
-    for (final x in res) {
-      guesses.add(TfliteProcessedGuess.fromMap(jsonDecode(x)));
-    }
 
     final file = File(imagePath);
     final decodedImage = await decodeImageFromList(file.readAsBytesSync());

@@ -41,5 +41,9 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>Take a photo of your castle to score it.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose an existing photo of your castle to score it.</string>
 </dict>
 </plist>

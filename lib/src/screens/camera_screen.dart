@@ -12,6 +12,7 @@ import 'package:btcc/src/utils/typedefs.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 class CameraScreen extends StatefulWidget {
@@ -116,38 +117,90 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
         !controller.value.isTakingPicture;
   }
 
+  Future<void> _continueWithImage(String imagePath) async {
+    await ImageHelper.bakeOrientationInPlace(imagePath);
+    final rotation = await ImageHelper.getImageRotation(imagePath);
+
+    if (!mounted) return;
+    NavigationHelper.goToPreCastleScreen(context, imagePath,
+      rotation: rotation,
+      replace: true,
+      addCastleCallback: widget.addCastleCallback,
+      numPicturesTaken: widget.numPicturesTaken + 1,
+      gameTitle: widget.gameTitle,
+    );
+  }
+
   Future<void> _onTakePicturePressed(String dirPath) async {
     if (!_readyForPicture()) {
       log('not ready for picture');
       return;
     }
 
-    setState((){
+    setState(() {
       savingImage = true;
     });
 
-    logNow(tag:'1TakePicture');
+    logNow(tag: '1TakePicture');
     String? res = await _takePicture(dirPath);
-    logNow(tag:'2TakePicture');
+    logNow(tag: '2TakePicture');
 
-    if (res == null) {
+    if (res == null || res.isEmpty) {
       log('error when taking picture');
-
-      setState((){
-        savingImage = false;
-      });
+      if (mounted) {
+        setState(() {
+          savingImage = false;
+        });
+      }
       return;
     }
 
-    var rotation = await ImageHelper.getImageRotation(res);
+    try {
+      await _continueWithImage(res);
+    } catch (ex) {
+      log(ex);
+      if (mounted) {
+        setState(() {
+          savingImage = false;
+        });
+      }
+    }
+  }
 
-    NavigationHelper.goToPreCastleScreen(context, res,
-      rotation: rotation,
-      replace: true,
-      addCastleCallback: widget.addCastleCallback,
-      numPicturesTaken: widget.numPicturesTaken+1,
-      gameTitle: widget.gameTitle,
-    );
+  Future<void> _onPickFromGallery(String dirPath) async {
+    if (savingImage) return;
+
+    setState(() {
+      savingImage = true;
+    });
+
+    try {
+      final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
+      if (picked == null) {
+        if (mounted) {
+          setState(() {
+            savingImage = false;
+          });
+        }
+        return;
+      }
+
+      final dir = Directory(dirPath);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+
+      final destPath = '$dirPath/${timestamp()}.jpg';
+      await File(picked.path).copy(destPath);
+      await _continueWithImage(destPath);
+    } catch (ex) {
+      log(ex);
+      if (mounted) {
+        setState(() {
+          savingImage = false;
+        });
+      }
+    }
   }
 
   String timestamp() => DateTime.now().millisecondsSinceEpoch.toString();
@@ -258,8 +311,14 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
     final backButton = FloatingActionButton(
       heroTag: 'camera_back',
       backgroundColor: Colors.blueGrey,
-      onPressed: _goBack,
+      onPressed: savingImage ? null : _goBack,
       child: const Icon(Icons.arrow_back),
+    );
+    final galleryButton = FloatingActionButton(
+      heroTag: 'camera_gallery',
+      backgroundColor: Colors.blueGrey,
+      onPressed: savingImage ? null : () => _onPickFromGallery(dirPath),
+      child: const Icon(Icons.photo_library),
     );
     final shutterButton = FloatingActionButton(
       heroTag: 'camera_shutter',
@@ -285,6 +344,13 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
                 child: backButton,
               ),
             ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 24),
+                child: galleryButton,
+              ),
+            ),
           ],
         ),
       );
@@ -301,6 +367,13 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
             child: Padding(
               padding: const EdgeInsets.only(bottom: 24),
               child: backButton,
+            ),
+          ),
+          Align(
+            alignment: Alignment.topCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 24),
+              child: galleryButton,
             ),
           ),
         ],
