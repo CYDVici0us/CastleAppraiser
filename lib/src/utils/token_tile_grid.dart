@@ -1,5 +1,6 @@
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/utils/grid_expander.dart';
+import 'package:btcc/src/utils/tile_helper.dart';
 import 'package:btcc/src/utils/tile_placement.dart';
 
 /// Bonus cards and royal attendants — scored tokens, not structural rooms.
@@ -21,8 +22,8 @@ class TokenTileGrid {
   /// Camera / game convention: at most two bonus cards per castle.
   static const int maxBonusCardsPerCastle = 2;
 
-  /// Camera / game convention: at most two royal attendants per castle.
-  static const int maxRoyalAttendantsPerCastle = 2;
+  /// Printed set: 7 copies of each attendant role.
+  static const int maxCopiesPerRoyalAttendantType = 7;
 
   /// The four attendant roles (duplicates like Jester2 are the same type).
   static const List<TileId> canonicalRoyalAttendantIds = [
@@ -35,12 +36,36 @@ class TokenTileGrid {
   /// Shared type key for attendant copies (Jester / Jester2 → same name).
   static String attendantTypeKey(Tile tile) => tile.name;
 
+  static int _attendantCopiesOfType(List<Tile> tokens, String typeKey) {
+    return tokens
+        .where((t) => t.isRoyalAttendant() && attendantTypeKey(t) == typeKey)
+        .length;
+  }
+
+  /// Attendants of the same role reuse the picked tile; scoring sums copies.
+  static Tile resolveTokenToAdd(
+    Tile chosen,
+    List<Tile> currentTokens, {
+    Tile? replacing,
+  }) {
+    return chosen;
+  }
+
   static List<Tile> _tokensExcluding(
     List<Tile> tokens,
     Tile? replacing,
   ) {
     if (replacing == null) return tokens;
-    return tokens.where((t) => t.id != replacing.id).toList();
+    final out = <Tile>[];
+    var skipped = false;
+    for (final t in tokens) {
+      if (!skipped && t.id == replacing.id) {
+        skipped = true;
+        continue;
+      }
+      out.add(t);
+    }
+    return out;
   }
 
   static bool canAddMoreBonusCards(
@@ -57,17 +82,22 @@ class TokenTileGrid {
     List<Tile> tokens, {
     Tile? replacing,
   }) {
-    final count = _tokensExcluding(tokens, replacing)
-        .where((t) => t.isRoyalAttendant())
-        .length;
-    return count < maxRoyalAttendantsPerCastle;
+    final effective = _tokensExcluding(tokens, replacing);
+    for (final id in canonicalRoyalAttendantIds) {
+      final tile = TileHelper().getTileById(id);
+      if (_attendantCopiesOfType(effective, attendantTypeKey(tile)) <
+          maxCopiesPerRoyalAttendantType) {
+        return true;
+      }
+    }
+    return false;
   }
 
   static bool canAddAnyToken(List<Tile> tokens) =>
       canAddMoreBonusCards(tokens) || canAddMoreAttendants(tokens);
 
   /// Inventory for the strip picker: unused bonus cards (if under max) and
-  /// up to the four attendant types not already on the castle (if under max).
+  /// attendant types that still have a free copy (duplicates allowed).
   static List<Tile> filterTokenPickerTiles({
     required List<Tile> inventory,
     required List<Tile> currentTokens,
@@ -82,28 +112,24 @@ class TokenTileGrid {
       for (final t in effective)
         if (t.isBonusCard()) t.id,
     };
-    final usedAttendantTypes = {
-      for (final t in effective)
-        if (t.isRoyalAttendant()) attendantTypeKey(t),
-    };
 
     final result = <Tile>[];
-    final seenAttendantTypes = <String>{};
 
     for (final tile in inventory) {
       if (tile.isBonusCard()) {
         if (!allowBonus) continue;
         if (usedBonusIds.contains(tile.id)) continue;
         result.add(tile);
-        continue;
       }
+    }
 
-      if (tile.isRoyalAttendant()) {
-        if (!allowAttendant) continue;
-        if (!canonicalRoyalAttendantIds.contains(tile.id)) continue;
-        final key = attendantTypeKey(tile);
-        if (usedAttendantTypes.contains(key)) continue;
-        if (!seenAttendantTypes.add(key)) continue;
+    if (allowAttendant) {
+      for (final id in canonicalRoyalAttendantIds) {
+        final tile = TileHelper().getTileById(id);
+        if (_attendantCopiesOfType(effective, attendantTypeKey(tile)) >=
+            maxCopiesPerRoyalAttendantType) {
+          continue;
+        }
         result.add(tile);
       }
     }
@@ -111,13 +137,16 @@ class TokenTileGrid {
     return result;
   }
 
-  /// Pulls token tiles out of [grid], replacing them with [getEmpty], then
-  /// packs remaining rooms toward the throne/ground to close holes.
-  /// Returns tokens in row-major order (bonus/royal as found).
+  /// Pulls token tiles out of [grid], replacing them with [getEmpty].
+  ///
+  /// Compacts rooms toward the throne only when tokens sat **among** rooms
+  /// (camera scan). A saved castle already has tokens on a leading strip;
+  /// compacting that would slide rooms back to an older packed layout.
   static ({List<Tile> tokens, GridList<Tile> structural}) extractTokenTiles(
     GridList<Tile> grid, {
     required Tile Function() getEmpty,
   }) {
+    final compactHoles = !_tokensAreLeadingStrip(grid);
     final tokens = <Tile>[];
     final items = List<Tile>.from(grid.items);
     for (int i = 0; i < items.length; i++) {
@@ -127,13 +156,36 @@ class TokenTileGrid {
       }
     }
     final structural = GridList<Tile>(grid.width, items);
-    // Column then row, twice, so vertical then horizontal fills settle.
-    TilePlacement.compactTowardGround(structural, getEmpty: getEmpty);
-    TilePlacement.compactTowardGround(structural, getEmpty: getEmpty);
+    if (compactHoles) {
+      TilePlacement.compactTowardGround(structural, getEmpty: getEmpty);
+      TilePlacement.compactTowardGround(structural, getEmpty: getEmpty);
+    }
     return (
       tokens: tokens,
       structural: structural,
     );
+  }
+
+  /// True when every bonus/attendant sits in rows above all rooms — the
+  /// layout [mergeTokenTilesIntoGrid] writes on save.
+  static bool _tokensAreLeadingStrip(GridList<Tile> grid) {
+    final w = grid.width;
+    if (w <= 0) return true;
+    final h = grid.height;
+    var lastTokenRow = -1;
+    var firstStructuralRow = h;
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final t = grid.items[y * w + x];
+        if (isTokenTile(t)) {
+          lastTokenRow = y;
+        } else if (!t.isEmpty()) {
+          if (y < firstStructuralRow) firstStructuralRow = y;
+        }
+      }
+    }
+    if (lastTokenRow < 0) return true;
+    return lastTokenRow < firstStructuralRow;
   }
 
   /// Prepends a top row for [tokens] above [structural] so tokens sit above

@@ -1,5 +1,6 @@
 import 'dart:collection';
 
+import 'package:btcc/src/app/app_identity.dart';
 import 'package:btcc/src/utils/log.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -41,17 +42,36 @@ class CameraStore extends ChangeNotifier {
   bool get readyForCameras => (hasCameraPermissions && cameras.length > 0);
 
   CameraStore() {
-    initCameras();
+    // Cameras stay lazy until the user taps "Take a photo" so gallery
+    // never touches the camera stack.
+  }
+
+  /// Permission + discover cameras (idempotent).
+  Future<void> ensureCamerasReady() async {
+    if (readyForCameras) return;
+    if (!_hasCameraPermissions) {
+      final granted = await Permission.camera.isGranted;
+      if (granted) {
+        _hasCameraPermissions = true;
+      } else {
+        await requestCameraPermission();
+        return;
+      }
+    }
+    if (_cameras.isEmpty) {
+      await initCameras();
+    }
   }
 
   Future<void> initCameras() async {
     _hasCameraPermissions = await Permission.camera.isGranted;
     if (!_hasCameraPermissions) {
       _error = Error.CAMERA_PERMISSION_DENIED;
-    }
-    else {
-      var cameras = await _getCameras();
-      _cameras.addAll(cameras);
+    } else {
+      final cameras = await _getCameras();
+      _cameras
+        ..clear()
+        ..addAll(cameras);
     }
 
     notifyListeners();
@@ -61,10 +81,11 @@ class CameraStore extends ChangeNotifier {
     PermissionStatus status = await Permission.camera.request();
     if (status.isGranted) {
       _hasCameraPermissions = true;
-      var cameras = await _getCameras();
-      _cameras.addAll(cameras);
-    }
-    else {
+      final cameras = await _getCameras();
+      _cameras
+        ..clear()
+        ..addAll(cameras);
+    } else {
       _error = Error.CAMERA_PERMISSION_DENIED;
     }
 
@@ -93,7 +114,7 @@ class CameraStore extends ChangeNotifier {
         return null;
       }
 
-      const MethodChannel _channel = const MethodChannel('com.btcc.app/camera');
+      const MethodChannel _channel = MethodChannel(AppIdentity.cameraChannel);
       var value = await _channel.invokeMethod('getPicture');
       return value as String?;
     } catch (e) {

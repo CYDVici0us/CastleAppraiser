@@ -160,15 +160,20 @@ class Castle {
       }
 
       if (currentlyScoringTile.isBallRoom()) {
-        tileScores[currentlyScoringTile.id] =
-            _scoreBallRoomTile(currentlyScoringTile, adjacentCastles);
+        _recordTileScore(
+          currentlyScoringTile,
+          _scoreBallRoomTile(currentlyScoringTile, adjacentCastles),
+        );
       }
       else {
-        tileScores[currentlyScoringTile.id] = _scoreTile(
+        _recordTileScore(
           currentlyScoringTile,
-          tilesInScoringPositions,
-          adjacentCastles,
-          i,
+          _scoreTile(
+            currentlyScoringTile,
+            tilesInScoringPositions,
+            adjacentCastles,
+            i,
+          ),
         );
       }
     }
@@ -186,6 +191,15 @@ class Castle {
     adjacentCastles.forEach((x) => x._clearSecretDuplicates());
 
     return total;
+  }
+
+  /// Royal attendants can share a [TileId]; sum copies so all 7 score.
+  void _recordTileScore(Tile tile, int score) {
+    if (tile.isRoyalAttendant()) {
+      tileScores[tile.id] = (tileScores[tile.id] ?? 0) + score;
+      return;
+    }
+    tileScores[tile.id] = score;
   }
 
   void _resetScoringAccumulators() {

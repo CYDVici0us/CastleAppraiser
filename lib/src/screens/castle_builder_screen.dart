@@ -468,14 +468,19 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     );
     if (chosen == null || !mounted) return;
     if (!TokenTileGrid.isTokenTile(chosen)) return;
+    final toPlace = TokenTileGrid.resolveTokenToAdd(
+      chosen,
+      _tokenTiles,
+      replacing: replacing,
+    );
 
     setState(() {
       if (replaceIndex != null &&
           replaceIndex >= 0 &&
           replaceIndex < _tokenTiles.length) {
-        _tokenTiles[replaceIndex] = chosen;
+        _tokenTiles[replaceIndex] = toPlace;
       } else {
-        _tokenTiles.add(chosen);
+        _tokenTiles.add(toPlace);
       }
       _selectedTokenIndex = replaceIndex ?? _tokenTiles.length - 1;
       _tokenStripExpanded = true;

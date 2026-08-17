@@ -10,6 +10,53 @@ import 'package:btcc/src/utils/tile_helper.dart';
 
 class TfliteHelper {
 
+  /// Non-max suppression that keeps neighboring *different* tiles.
+  /// Same label: suppress when IoU > [sameClassIou].
+  /// Different label: only suppress near-duplicate boxes (IoU > [crossClassIou]).
+  /// Throne rooms are never removed by cross-class overlap (attendants/bonus
+  /// cards sit on them and would otherwise wipe the TR* box).
+  static List<TfliteProcessedGuess> classAwareNms(
+    List<TfliteProcessedGuess> guesses, {
+    double sameClassIou = 0.45,
+    double crossClassIou = 0.7,
+  }) {
+    final copy = List<TfliteProcessedGuess>.from(guesses)
+      ..sort((a, b) => b.score.compareTo(a.score));
+    final best = <TfliteProcessedGuess>[];
+    while (copy.isNotEmpty) {
+      final top = copy.removeAt(0);
+      best.add(top);
+      copy.removeWhere((g) {
+        final iou = top.calculateOverlap(g);
+        if (g.label == top.label) return iou > sameClassIou;
+        if (isThroneRoom(g)) return false;
+        if (isThroneRoom(top) && isNonTile(g)) return false;
+        final gArea = (g.xMax - g.xMin) * (g.yMax - g.yMin);
+        final topArea = (top.xMax - top.xMin) * (top.yMax - top.yMin);
+        if (gArea > topArea * 1.8) {
+          final inter = _intersectionArea(top, g);
+          if (topArea > 0 && inter / topArea > 0.7) return false;
+        }
+        return iou > crossClassIou;
+      });
+    }
+    return best;
+  }
+
+  static double _intersectionArea(
+    TfliteProcessedGuess a,
+    TfliteProcessedGuess b,
+  ) {
+    final xMinInter = a.xMin > b.xMin ? a.xMin : b.xMin;
+    final xMaxInter = a.xMax < b.xMax ? a.xMax : b.xMax;
+    final yMinInter = a.yMin > b.yMin ? a.yMin : b.yMin;
+    final yMaxInter = a.yMax < b.yMax ? a.yMax : b.yMax;
+    final w = xMaxInter - xMinInter;
+    final h = yMaxInter - yMinInter;
+    if (w <= 0 || h <= 0) return 0;
+    return w * h;
+  }
+
   static GridList<TileId> convertCastleToStoredCastle(Castle castle) {
     return convertToStoredCastle(castle.castleTiles);
   }
@@ -30,6 +77,20 @@ class TfliteHelper {
     // Highest score first so first-to-empty placement keeps the best detection.
     final guesses = List<TfliteProcessedGuess>.from(pGuesses)
       ..sort((a, b) => b.score.compareTo(a.score));
+
+    // Attendants sit on the throne; if the model never emitted a TR* class
+    // (or NMS wiped it), synthesize a throne under the attendants so Confirm
+    // can still open.
+    if (!guesses.any(isThroneRoom)) {
+      final inferred = inferThroneFromAttendants(guesses);
+      if (inferred != null) {
+        log('inferred throne from attendants at '
+            '(${inferred.xMin.toStringAsFixed(0)},${inferred.yMin.toStringAsFixed(0)})-'
+            '(${inferred.xMax.toStringAsFixed(0)},${inferred.yMax.toStringAsFixed(0)})');
+        guesses.add(inferred);
+        guesses.sort((a, b) => b.score.compareTo(a.score));
+      }
+    }
 
     log('Best Guesses:');
     log(guesses);
@@ -298,19 +359,19 @@ class TfliteHelper {
       case TileLabels.RAM:
         if(!isTileInList(currentTiles,TileId.RoyalAttendantTaylor)) return TileHelper().getTileById(TileId.RoyalAttendantTaylor);
         if(!isTileInList(currentTiles,TileId.RoyalAttendantTaylor2)) return TileHelper().getTileById(TileId.RoyalAttendantTaylor2);
-        break;
+        return TileHelper().getTileById(TileId.RoyalAttendantTaylor);
       case TileLabels.RAS:
         if(!isTileInList(currentTiles,TileId.RoyalAttendantKnight)) return TileHelper().getTileById(TileId.RoyalAttendantKnight);
         if(!isTileInList(currentTiles,TileId.RoyalAttendantKnight2)) return TileHelper().getTileById(TileId.RoyalAttendantKnight2);
-        break;
+        return TileHelper().getTileById(TileId.RoyalAttendantKnight);
       case TileLabels.RAP:
         if(!isTileInList(currentTiles,TileId.RoyalAttendantPainter)) return TileHelper().getTileById(TileId.RoyalAttendantPainter);
         if(!isTileInList(currentTiles,TileId.RoyalAttendantPainter2)) return TileHelper().getTileById(TileId.RoyalAttendantPainter2);
-        break;
+        return TileHelper().getTileById(TileId.RoyalAttendantPainter);
       case TileLabels.RAT:
         if(!isTileInList(currentTiles,TileId.RoyalAttendantJester)) return TileHelper().getTileById(TileId.RoyalAttendantJester);
         if(!isTileInList(currentTiles,TileId.RoyalAttendantJester2)) return TileHelper().getTileById(TileId.RoyalAttendantJester2);
-        break;
+        return TileHelper().getTileById(TileId.RoyalAttendantJester);
 
       case TileLabels.BRA:
         if(!isTileInList(currentTiles,TileId.BallRoomPerActivity)) return TileHelper().getTileById(TileId.BallRoomPerActivity);
@@ -379,10 +440,95 @@ class TfliteHelper {
         guess.label == TileLabels.TRUF ||
         guess.label == TileLabels.TRCF ||
         guess.label == TileLabels.TRAO;
-    // bool retVal = false;
-    // var length = guess.xMax - guess.xMin;
-    // if( length < stats.averageX * .5) retVal = true;
-    // return retVal;
+  }
+
+  /// Room-tile detections only (excludes throne, bonus cards, attendants).
+  static int countRoomDetections(List<TfliteProcessedGuess> guesses) {
+    return guesses
+        .where((g) => !isNonTile(g) && !isThroneRoom(g))
+        .length;
+  }
+
+  /// Non-empty room tiles on a built grid (excludes throne, placeholder, tokens).
+  static int countPlacedRoomTiles(GridList<Tile> grid) {
+    var count = 0;
+    for (final t in grid.items) {
+      if (t.isEmpty()) continue;
+      switch (t.tileType) {
+        case TileType.ThroneRoom:
+        case TileType.Placeholder:
+        case TileType.BonusCard:
+        case TileType.RoyalAttendant:
+          continue;
+        default:
+          count++;
+      }
+    }
+    return count;
+  }
+
+  /// When [expected] is set, true if fewer room tiles were found/placed.
+  static bool isUnderExpectedRoomCount(int found, int? expected) {
+    return expected != null && expected > 0 && found < expected;
+  }
+
+  /// When royal attendants are detected but no throne class survived, place a
+  /// ~2×1 throne under the attendants (they sit on the throne room tile).
+  static TfliteProcessedGuess? inferThroneFromAttendants(
+    List<TfliteProcessedGuess> guesses,
+  ) {
+    final attendants = <TfliteProcessedGuess>[];
+    final rooms = <TfliteProcessedGuess>[];
+    for (final g in guesses) {
+      if (isThroneRoom(g)) return null;
+      if (isNonTile(g)) {
+        final tile = getCorrectTile(g, const <Tile>[]);
+        if (tile.tileType == TileType.RoyalAttendant) {
+          attendants.add(g);
+        }
+        continue;
+      }
+      rooms.add(g);
+    }
+    if (attendants.isEmpty) return null;
+
+    var sumCx = 0.0;
+    var sumCy = 0.0;
+    for (final a in attendants) {
+      sumCx += (a.xMin + a.xMax) / 2;
+      sumCy += (a.yMin + a.yMax) / 2;
+    }
+    final cx = sumCx / attendants.length;
+    final cy = sumCy / attendants.length;
+
+    // Tile pitch from room boxes when available; else from attendants.
+    final pitchSrc = rooms.isNotEmpty ? rooms : attendants;
+    var sumW = 0.0;
+    var sumH = 0.0;
+    for (final g in pitchSrc) {
+      sumW += g.xMax - g.xMin;
+      sumH += g.yMax - g.yMin;
+    }
+    final tileW = sumW / pitchSrc.length;
+    final tileH = sumH / pitchSrc.length;
+    // Throne is 2 tiles wide; keep attendants near the top of the box.
+    final width = tileW * 2.0;
+    final height = tileH * 1.05;
+    final xMin = cx - width / 2;
+    final xMax = cx + width / 2;
+    final yMin = cy - height * 0.25;
+    final yMax = yMin + height;
+
+    return TfliteProcessedGuess(
+      xMin: xMin,
+      xMax: xMax,
+      yMin: yMin,
+      yMax: yMax,
+      label: TileLabels.TRCD,
+      probability: 0.55,
+      confidence: 0.55,
+      score: 0.3,
+    );
   }
 
   static int getBestX(GuessStats stats, TfliteProcessedGuess guess){

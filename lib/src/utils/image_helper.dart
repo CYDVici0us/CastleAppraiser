@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:btcc/src/utils/log.dart';
 import 'package:exif/exif.dart';
 import 'package:flutter/material.dart';
-import 'package:image/image.dart' as img;
 
 class ImageHelper {
 
@@ -20,55 +19,69 @@ class ImageHelper {
     return base64Encode(bytes);
   }
 
-  /// Reads EXIF orientation. Missing or unsupported tags default to [ImageRotation.Normal]
-  /// so gallery photos without metadata do not crash the pipeline.
-  static Future<ImageRotation> getImageRotation(String imagePath) async {
+  /// Reads EXIF orientation.
+  ///
+  /// [strict] matches pre-August behavior: missing/unsupported tags throw.
+  /// When false (modern), defaults to [ImageRotation.Normal] so gallery photos
+  /// without metadata do not crash.
+  static Future<ImageRotation> getImageRotation(
+    String imagePath, {
+    bool strict = false,
+  }) async {
     try {
       final image = File(imagePath);
       final bytes = await image.readAsBytes();
       final data = await readExifFromBytes(bytes);
       final tag = data['Image Orientation'];
       if (tag == null) {
+        if (strict) {
+          throw Exception('Missing Image Orientation EXIF tag');
+        }
         return ImageRotation.Normal;
       }
 
       final val = tag.values.firstAsInt();
       switch (val) {
         case 1:
-        case 2: // mirrored horizontal
           return ImageRotation.Normal;
         case 6:
-        case 5: // mirrored + 90 CW
           return ImageRotation.NinetyClockwise;
         case 3:
-        case 4: // mirrored vertical
           return ImageRotation.OneEighty;
         case 8:
-        case 7: // mirrored + 90 CCW
+          return ImageRotation.NinetyCounterClockwise;
+        case 2:
+          if (strict) {
+            throw Exception('Unsupported image rotation type: $val');
+          }
+          return ImageRotation.Normal;
+        case 5:
+          if (strict) {
+            throw Exception('Unsupported image rotation type: $val');
+          }
+          return ImageRotation.NinetyClockwise;
+        case 4:
+          if (strict) {
+            throw Exception('Unsupported image rotation type: $val');
+          }
+          return ImageRotation.OneEighty;
+        case 7:
+          if (strict) {
+            throw Exception('Unsupported image rotation type: $val');
+          }
           return ImageRotation.NinetyCounterClockwise;
         default:
+          if (strict) {
+            throw Exception('Unsupported image rotation type: $val');
+          }
           log('Unsupported EXIF orientation $val; defaulting to Normal');
           return ImageRotation.Normal;
       }
     } catch (ex) {
+      if (strict) rethrow;
       log('getImageRotation failed: $ex; defaulting to Normal');
       return ImageRotation.Normal;
     }
-  }
-
-  /// Bakes EXIF orientation into pixel data and rewrites [imagePath] as JPEG
-  /// with Orientation=1. Detection and [Image.file] then agree without relying
-  /// on EXIF alone (important for gallery images).
-  static Future<void> bakeOrientationInPlace(String imagePath) async {
-    final file = File(imagePath);
-    final bytes = await file.readAsBytes();
-    final decoded = img.decodeImage(bytes);
-    if (decoded == null) {
-      throw Exception('Could not decode image at $imagePath');
-    }
-
-    final baked = img.bakeOrientation(decoded);
-    await file.writeAsBytes(img.encodeJpg(baked, quality: 95));
   }
 }
 

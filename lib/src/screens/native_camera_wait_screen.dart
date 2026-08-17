@@ -32,10 +32,9 @@ class NativeCameraWaitScreen extends StatelessWidget {
         return;
       }
 
-      await ImageHelper.bakeOrientationInPlace(path);
       final rotation = await ImageHelper.getImageRotation(path);
 
-      NavigationHelper.goToPreCastleScreen(context, path,
+      NavigationHelper.goToPhotoWorkflowScreen(context, path,
         rotation: rotation,
         replace: true,
         addCastleCallback: addCastleCallback,

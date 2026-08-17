@@ -46,7 +46,15 @@ The Flutter package name is `btcc`. The project targets **Dart 3 / null safety**
   saved games, persists castle/game changes, and cleans up unused image files on
   supported platforms.
 - `CameraStore` manages permissions, camera discovery, and native camera capture
-  through the `com.btcc.app/camera` method channel.
+  through the `com.btcc.app2/camera` method channel.
+
+## Standalone install (Castle Appraiser 2.0)
+
+This fork uses application id **`com.btcc.app2`** (Android) and bundle id
+**`com.btcc.app2`** (iOS) so it installs alongside the published Castle
+Appraiser app (`com.btcc.app`) without replacing it. Each app has its own
+saved games and photos. Register `com.btcc.app2` in Firebase if you need
+Crashlytics for release builds.
 - `TfStore` loads the default scoring model, can switch to the identify model,
   runs detections on images or camera frames via `TfliteDetector`, and returns
   processed guesses.

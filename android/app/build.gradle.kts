@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.btcc.app"
+    namespace = "com.btcc.app2"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -17,16 +17,16 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.btcc.app"
+        applicationId = "com.btcc.app2"
         minSdk = maxOf(flutter.minSdkVersion, 24)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        // Play's 16 KB check is for 64-bit only; ship arm64-v8a to avoid
-        // Studio/Play noise from 32-bit and emulator x86_64 prebuilts.
+        // Debug/profile: include x86_64 so Android Studio emulators can load
+        // libflutter.so. Release stays arm64-only (Play / physical devices).
         ndk {
             abiFilters.clear()
-            abiFilters.add("arm64-v8a")
+            abiFilters.addAll(listOf("arm64-v8a", "x86_64"))
         }
     }
 
@@ -37,6 +37,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // Play's 16 KB check is for 64-bit only; ship arm64-v8a to avoid
+            // Studio/Play noise from 32-bit and emulator x86_64 prebuilts.
             ndk {
                 abiFilters.clear()
                 abiFilters.add("arm64-v8a")
@@ -55,7 +57,6 @@ android {
             excludes += setOf(
                 "**/armeabi-v7a/**",
                 "**/x86/**",
-                "**/x86_64/**",
             )
         }
     }
@@ -69,6 +70,19 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Required for FlexMul / FlexAddV2 in the scoring model.
+    // Paired with MainActivity FlexDelegate → Dart InterpreterOptions.
+    //
+    // WARNING: Maven 2.16.1 ships libtensorflowlite_flex_jni.so with 4 KB ELF
+    // alignment. That triggers Android Studio's 16 KB page-size warning and
+    // prevents loading on 16 KB devices (many newer Samsungs). There is no
+    // official 16 KB select-tf-ops AAR yet; LiteRT core is 16 KB but Flex is not.
+    // Emulators (4 KB pages) work; physical 16 KB phones need a rebuilt Flex
+    // .so or a model without SELECT_TF_OPS.
+    implementation("org.tensorflow:tensorflow-lite-select-tf-ops:2.16.1")
 }
 
 // 16 KB page-size: pin AndroidX natives known to pass Play/Studio checks, and

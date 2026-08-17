@@ -61,11 +61,31 @@ class _AssetBootstrapState extends State<_AssetBootstrap> {
             theme: ThemeData(
               useMaterial3: true,
               brightness: Brightness.dark,
-              scaffoldBackgroundColor: const Color(0xFF121212),
+              scaffoldBackgroundColor: Colors.black,
             ),
-            home: const Scaffold(
-              body: Center(
-                child: CircularProgressIndicator(),
+            home: Scaffold(
+              backgroundColor: Colors.black,
+              body: Builder(
+                builder: (context) {
+                  final logoSize =
+                      (MediaQuery.sizeOf(context).shortestSide * 0.72)
+                          .clamp(240.0, 420.0);
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Image.asset(
+                          'assets/images/logo.png',
+                          width: logoSize,
+                          height: logoSize,
+                          fit: BoxFit.contain,
+                        ),
+                        const SizedBox(height: 32),
+                        const CircularProgressIndicator(),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
           );

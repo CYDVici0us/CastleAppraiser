@@ -1,3 +1,4 @@
+import 'package:btcc/src/app/app_identity.dart';
 import 'package:btcc/src/screens/main_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -15,7 +16,7 @@ class AppColors {
 class AppWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'Btcc',
+        title: AppIdentity.displayName,
         home: MainScreen(),
         themeMode: ThemeMode.dark,
         theme: ThemeData(

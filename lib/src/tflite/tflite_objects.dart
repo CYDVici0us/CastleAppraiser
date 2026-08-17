@@ -82,7 +82,6 @@ class TfliteProcessedGuess<T> {
   }
 
   static TileLabels getLabelFromGuessLabel(Map map) {
-    log('getLabelFromGuessLabel: $map');
     var label = map['label'];
     if (label is int) {
       return TileLabels.values[label];
@@ -153,6 +152,19 @@ class TfliteProcessedGuess<T> {
       'confidence': confidence,
       'score': score,
     };
+  }
+
+  TfliteProcessedGuess<T> translated(double dx, double dy) {
+    return TfliteProcessedGuess<T>(
+      xMin: xMin + dx,
+      xMax: xMax + dx,
+      yMin: yMin + dy,
+      yMax: yMax + dy,
+      label: label,
+      probability: probability,
+      confidence: confidence,
+      score: score,
+    );
   }
 
   double area() {

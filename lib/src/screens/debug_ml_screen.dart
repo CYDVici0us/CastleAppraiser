@@ -6,6 +6,7 @@ import 'package:btcc/src/state/camera_store.dart';
 import 'package:btcc/src/utils/log.dart';
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/state/tf_store.dart';
+import 'package:btcc/src/tflite/image_pipeline_mode.dart';
 import 'package:btcc/src/tflite/tflite_model.dart';
 import 'package:btcc/src/tflite/tflite_objects.dart';
 import 'package:btcc/src/utils/asset_helper.dart';
@@ -34,12 +35,9 @@ class DebugMLScreenState extends State<DebugMLScreen> {
   ui.Image? decodedImage;
   Map<String, IfdTag>? exifData;
   bool running = false;
-  
-  double scoreThreshold = .7;
-  double overlapThreshold = .45;
-  double mean = 127.5;
-  double std = 127.5;
-  int rotations = 1;
+  String status =
+      'Tap Reset defaults, select an image, then Run model. Watch logcat for unravel: lines.';
+
   String? imagePath;
 
   DebugMLScreenState(this.imagePath);
@@ -49,6 +47,27 @@ class DebugMLScreenState extends State<DebugMLScreen> {
     super.initState();
 
     loadImageData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final store = Provider.of<TfStore>(context, listen: false);
+      _resetDefaults(store);
+    });
+  }
+
+  Future<void> _resetDefaults(TfStore store) async {
+    store.scoreThreshold = 0.3;
+    store.overlapThreshold = 0.45;
+    store.mean = 0;
+    store.std = 255;
+    store.rotations = 3;
+    store.useIdentifyModel = false;
+    final ok = await store.init(TfliteModel.scoring, true);
+    if (!mounted) return;
+    setState(() {
+      status = ok
+          ? 'Defaults OK — ${store.pipelineMode.label}, size=${store.inputImageSize}, '
+              'thr=${store.scoreThreshold}, mean=${store.mean}, std=${store.std}'
+          : 'Failed to load scoring model';
+    });
   }
 
   bool imageIsRotated() {
@@ -183,8 +202,66 @@ class DebugMLScreenState extends State<DebugMLScreen> {
       children: [
         SwitchListTile(
           value: store.useIdentifyModel,
-          onChanged: (bool val) => store.useIdentifyModel = val,
+          onChanged: (bool val) async {
+            store.useIdentifyModel = val;
+            final model = val ? TfliteModel.identify : TfliteModel.scoring;
+            await store.init(model, true);
+            setState(() {
+              status =
+                  'Loaded ${model.file.split('/').last} size=${store.inputImageSize}';
+            });
+          },
           title: Text('Use identify model'),
+        ),
+        SwitchListTile(
+          title: Text('Legacy image pipeline'),
+          subtitle: Text(
+            store.pipelineMode == ImagePipelineMode.legacy
+                ? 'ON: pre-August camera + detection (always-swap dims, strict edges, single EXIF rotation, original preview size)'
+                : 'OFF (modern): odd-rotation swap, soft edges, multi-rotation search, orientation-aware preview',
+          ),
+          value: store.pipelineMode == ImagePipelineMode.legacy,
+          onChanged: (legacy) {
+            store.pipelineMode =
+                legacy ? ImagePipelineMode.legacy : ImagePipelineMode.modern;
+            setState(() {
+              status = 'Pipeline → ${store.pipelineMode.label}';
+            });
+          },
+        ),
+        ElevatedButton(
+          onPressed: () => _resetDefaults(store),
+          child: const Text('Reset defaults (scoring / 1664 / thr 0.3)'),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(8),
+          child: SelectableText(
+            status,
+            style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+          ),
+        ),
+        Consumer<TfStore>(
+          builder: (_, store, __) {
+            final line = store.lastUnravelStatus;
+            if (line.startsWith('unravel: (no run')) {
+              return const SizedBox.shrink();
+            }
+            return Card(
+              color: Colors.black87,
+              margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: SelectableText(
+                  line,
+                  style: const TextStyle(
+                    color: Colors.lightGreenAccent,
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
+            );
+          },
         ),
         ElevatedButton(
           child: Text('${store.modelPath}'),
@@ -361,11 +438,23 @@ class DebugMLScreenState extends State<DebugMLScreen> {
         Consumer<TfStore>(builder: (ctx, store, child) => ElevatedButton(
           child: Text('Run model'),
           onPressed: (store.running || imagePath == null) ? null : () async {
-
-            var res = await store.runOnImage(imagePath!);
             setState(() {
-              guesses = res;
+              status = 'Running…';
             });
+            try {
+              var res = await store.runOnImage(imagePath!);
+              setState(() {
+                guesses = res;
+                status = res.isEmpty
+                    ? '0 results.\n${store.lastUnravelStatus}'
+                    : 'Results: ${res.length}\n${store.lastUnravelStatus}';
+              });
+            } catch (e, st) {
+              setState(() {
+                guesses = [];
+                status = 'Error: $e\n$st';
+              });
+            }
           },
         )),
         Container(height: 10),

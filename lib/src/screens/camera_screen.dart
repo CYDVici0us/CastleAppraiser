@@ -1,8 +1,11 @@
 import 'dart:io';
+import 'dart:math' as math;
 
+import 'package:btcc/src/app/app_identity.dart';
 import 'package:btcc/src/state/camera_store.dart';
 import 'package:btcc/src/state/data_store.dart';
 import 'package:btcc/src/state/tf_store.dart';
+import 'package:btcc/src/tflite/image_pipeline_mode.dart';
 import 'package:btcc/src/tflite/tflite_objects.dart';
 import 'package:btcc/src/utils/image_helper.dart';
 import 'package:btcc/src/utils/log.dart';
@@ -12,7 +15,6 @@ import 'package:btcc/src/utils/typedefs.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 class CameraScreen extends StatefulWidget {
@@ -40,6 +42,7 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
 
   String? imagePath;
   bool savingImage = false;
+  bool _cameraReleased = false;
   double _startScaleFactor = 1;
   double _scaleFactor = 1;
 
@@ -58,7 +61,7 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
       enableAudio: false,
     );
 
-    const MethodChannel _channel = const MethodChannel('com.btcc.app/camera');
+    const MethodChannel _channel = MethodChannel(AppIdentity.cameraChannel);
     _channel.invokeMethod('setSensorOrientation');
 
     var tfStore = Provider.of<TfStore>(context, listen: false);
@@ -104,25 +107,55 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
 
   @override
   void dispose() {
-    controller.dispose();
-    const MethodChannel _channel = const MethodChannel('com.btcc.app/camera');
+    // Sync best-effort if capture path did not already await release.
+    if (!_cameraReleased) {
+      try {
+        controller.dispose();
+      } catch (_) {}
+      _cameraReleased = true;
+    }
+    const MethodChannel _channel = MethodChannel(AppIdentity.cameraChannel);
     _channel.invokeMethod('setUserOrientation');
     OrientationHelper.lockPortrait();
 
     super.dispose();
   }
 
+  /// Stop CameraX before Flex runs — otherwise binder stalls for tens of seconds
+  /// while preview surfaces keep producing frames during TFLite.
+  Future<void> _releaseCamera() async {
+    if (_cameraReleased) return;
+    _cameraReleased = true;
+    try {
+      if (controller.value.isInitialized &&
+          controller.value.isStreamingImages) {
+        await controller.stopImageStream();
+      }
+    } catch (ex) {
+      log('stopImageStream: $ex');
+    }
+    try {
+      await controller.dispose();
+    } catch (ex) {
+      log('camera dispose: $ex');
+    }
+    // Let CameraX binder callbacks drain before the next heavy native work.
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+  }
+
   bool _readyForPicture() {
-    return controller.value.isInitialized &&
+    return !_cameraReleased &&
+        controller.value.isInitialized &&
         !controller.value.isTakingPicture;
   }
 
   Future<void> _continueWithImage(String imagePath) async {
-    await ImageHelper.bakeOrientationInPlace(imagePath);
+    await _releaseCamera();
+
     final rotation = await ImageHelper.getImageRotation(imagePath);
 
     if (!mounted) return;
-    NavigationHelper.goToPreCastleScreen(context, imagePath,
+    NavigationHelper.goToPhotoWorkflowScreen(context, imagePath,
       rotation: rotation,
       replace: true,
       addCastleCallback: widget.addCastleCallback,
@@ -157,42 +190,6 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
 
     try {
       await _continueWithImage(res);
-    } catch (ex) {
-      log(ex);
-      if (mounted) {
-        setState(() {
-          savingImage = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _onPickFromGallery(String dirPath) async {
-    if (savingImage) return;
-
-    setState(() {
-      savingImage = true;
-    });
-
-    try {
-      final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-      if (picked == null) {
-        if (mounted) {
-          setState(() {
-            savingImage = false;
-          });
-        }
-        return;
-      }
-
-      final dir = Directory(dirPath);
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
-
-      final destPath = '$dirPath/${timestamp()}.jpg';
-      await File(picked.path).copy(destPath);
-      await _continueWithImage(destPath);
     } catch (ex) {
       log(ex);
       if (mounted) {
@@ -244,61 +241,84 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
     return isLandscape ? value.aspectRatio : 1 / value.aspectRatio;
   }
 
-  /// Fills available space with cover-fit. Child size tracks CameraPreview's
-  /// portrait/landscape aspect so portrait is not a cropped landscape frame.
-  Widget _cameraPreviewWidget(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapUp: (details) async {
-        final box = context.findRenderObject() as RenderBox?;
-        if (box == null || !box.hasSize) return;
-        final local = box.globalToLocal(details.globalPosition);
-        final x = (local.dx / box.size.width).clamp(0.0, 1.0);
-        final y = (local.dy / box.size.height).clamp(0.0, 1.0);
-        await controller.setFocusPoint(Offset(x, y));
-      },
-      onScaleStart: (details) {
-        _startScaleFactor = _scaleFactor;
-      },
-      onScaleUpdate: (details) {
-        _scaleFactor = _startScaleFactor * details.scale;
+  /// Original in-app camera (pre-August): portrait is `width × width*ar`,
+  /// landscape is `height*ar × height`. Scale down only if that would overflow.
+  Size _legacyPreviewSize(Size available, double aspectRatio,
+      {required bool portrait}) {
+    final wanted = portrait
+        ? Size(available.width, available.width * aspectRatio)
+        : Size(available.height * aspectRatio, available.height);
+    if (wanted.width <= available.width + 0.5 &&
+        wanted.height <= available.height + 0.5) {
+      return wanted;
+    }
+    if (wanted.width <= 0 || wanted.height <= 0) return wanted;
+    final scale = math.min(
+      available.width / wanted.width,
+      available.height / wanted.height,
+    );
+    return Size(wanted.width * scale, wanted.height * scale);
+  }
 
-        if (_scaleFactor < _zoomMin) {
-          _scaleFactor = _zoomMin;
-        }
+  Widget _cameraPreviewWidget({required bool fill}) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapUp: (details) async {
+            final w = constraints.maxWidth;
+            final h = constraints.maxHeight;
+            if (w <= 0 || h <= 0) return;
+            final x = (details.localPosition.dx / w).clamp(0.0, 1.0);
+            final y = (details.localPosition.dy / h).clamp(0.0, 1.0);
+            await controller.setFocusPoint(Offset(x, y));
+          },
+          onScaleStart: (details) {
+            _startScaleFactor = _scaleFactor;
+          },
+          onScaleUpdate: (details) {
+            _scaleFactor = _startScaleFactor * details.scale;
 
-        if (_scaleFactor > _zoomMax) {
-          _scaleFactor = _zoomMax;
-        }
+            if (_scaleFactor < _zoomMin) {
+              _scaleFactor = _zoomMin;
+            }
 
-        controller.setZoomLevel(_scaleFactor);
+            if (_scaleFactor > _zoomMax) {
+              _scaleFactor = _zoomMax;
+            }
+
+            controller.setZoomLevel(_scaleFactor);
+          },
+          onScaleEnd: (details) async {
+            _startScaleFactor = 1;
+          },
+          child: ColoredBox(
+            color: Colors.black,
+            child: !controller.value.isInitialized
+                ? const SizedBox.shrink()
+                : fill
+                    ? SizedBox.expand(
+                        child: ValueListenableBuilder<CameraValue>(
+                          valueListenable: controller,
+                          builder: (context, value, child) {
+                            final previewAspect = _previewAspectRatio(value);
+                            return FittedBox(
+                              fit: BoxFit.cover,
+                              clipBehavior: Clip.hardEdge,
+                              child: SizedBox(
+                                width: 1000,
+                                height: 1000 / previewAspect,
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: CameraPreview(controller),
+                        ),
+                      )
+                    : CameraPreview(controller),
+          ),
+        );
       },
-      onScaleEnd: (details) async {
-        _startScaleFactor = 1;
-      },
-      child: ColoredBox(
-        color: Colors.black,
-        child: SizedBox.expand(
-          child: !controller.value.isInitialized
-              ? const SizedBox.shrink()
-              : ValueListenableBuilder<CameraValue>(
-                  valueListenable: controller,
-                  builder: (context, value, child) {
-                    final previewAspect = _previewAspectRatio(value);
-                    return FittedBox(
-                      fit: BoxFit.cover,
-                      clipBehavior: Clip.hardEdge,
-                      child: SizedBox(
-                        width: 1000,
-                        height: 1000 / previewAspect,
-                        child: child,
-                      ),
-                    );
-                  },
-                  child: CameraPreview(controller),
-                ),
-        ),
-      ),
     );
   }
 
@@ -313,12 +333,6 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
       backgroundColor: Colors.blueGrey,
       onPressed: savingImage ? null : _goBack,
       child: const Icon(Icons.arrow_back),
-    );
-    final galleryButton = FloatingActionButton(
-      heroTag: 'camera_gallery',
-      backgroundColor: Colors.blueGrey,
-      onPressed: savingImage ? null : () => _onPickFromGallery(dirPath),
-      child: const Icon(Icons.photo_library),
     );
     final shutterButton = FloatingActionButton(
       heroTag: 'camera_shutter',
@@ -344,13 +358,6 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
                 child: backButton,
               ),
             ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Padding(
-                padding: const EdgeInsets.only(right: 24),
-                child: galleryButton,
-              ),
-            ),
           ],
         ),
       );
@@ -367,13 +374,6 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
             child: Padding(
               padding: const EdgeInsets.only(bottom: 24),
               child: backButton,
-            ),
-          ),
-          Align(
-            alignment: Alignment.topCenter,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 24),
-              child: galleryButton,
             ),
           ),
         ],
@@ -421,9 +421,8 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
       builder: (_, model, __) {
         final portrait =
             MediaQuery.orientationOf(context) == Orientation.portrait;
-        final preview = Expanded(
-          child: _cameraPreviewWidget(context),
-        );
+        final legacy = Provider.of<TfStore>(context, listen: false).pipelineMode ==
+            ImagePipelineMode.legacy;
         final controls = _controlsWidget(
           model.imagesTempPath,
           portrait: portrait,
@@ -432,9 +431,45 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
         return Scaffold(
           backgroundColor: Colors.black,
           body: SafeArea(
-            child: portrait
-                ? Column(children: [preview, controls])
-                : Row(children: [preview, controls]),
+            child: legacy
+                ? LayoutBuilder(
+                    builder: (context, constraints) {
+                      const controlExtent = 96.0;
+                      final available = portrait
+                          ? Size(
+                              constraints.maxWidth,
+                              math.max(
+                                  0, constraints.maxHeight - controlExtent),
+                            )
+                          : Size(
+                              math.max(
+                                  0, constraints.maxWidth - controlExtent),
+                              constraints.maxHeight,
+                            );
+                      final previewSize = _legacyPreviewSize(
+                        available,
+                        controller.value.aspectRatio,
+                        portrait: portrait,
+                      );
+                      final preview = SizedBox(
+                        width: previewSize.width,
+                        height: previewSize.height,
+                        child: _cameraPreviewWidget(fill: false),
+                      );
+                      return portrait
+                          ? Column(children: [preview, Expanded(child: controls)])
+                          : Row(children: [preview, Expanded(child: controls)]);
+                    },
+                  )
+                : portrait
+                    ? Column(children: [
+                        Expanded(child: _cameraPreviewWidget(fill: true)),
+                        controls,
+                      ])
+                    : Row(children: [
+                        Expanded(child: _cameraPreviewWidget(fill: true)),
+                        controls,
+                      ]),
           ),
         );
       },

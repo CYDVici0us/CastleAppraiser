@@ -3,11 +3,14 @@ import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/screens/native_camera_wait_screen.dart';
 import 'package:btcc/src/screens/castle_builder_screen.dart';
 import 'package:btcc/src/screens/castle_confirm_screen.dart';
+import 'package:btcc/src/screens/castle_frame_screen.dart';
 import 'package:btcc/src/screens/castle_screen.dart';
 import 'package:btcc/src/screens/debug_ml_screen.dart';
 import 'package:btcc/src/screens/game_edit_screen.dart';
+import 'package:btcc/src/screens/photo_workflow_screen.dart';
 import 'package:btcc/src/screens/pre_camera_screen.dart';
 import 'package:btcc/src/screens/pre_castle_screen.dart';
+import 'package:btcc/src/screens/tile_selection_flow_screen.dart';
 import 'package:btcc/src/state/camera_store.dart';
 import 'package:btcc/src/utils/orientation_helper.dart';
 import 'package:btcc/src/utils/typedefs.dart';
@@ -25,9 +28,11 @@ class NavigationHelper {
     required AddCastleToGameCallback addCastleCallback,
     String? gameTitle,
   }) {
-    OrientationHelper.unlockForCamera();
+    OrientationHelper.lockPortrait();
     MaterialPageRoute<Null> route;
     if (cameraTech == CameraTech.NATIVE) {
+      // Native path still opens the system camera immediately.
+      OrientationHelper.unlockForCamera();
       route = MaterialPageRoute<Null>(
         builder: (_) => NativeCameraWaitScreen(
           addCastleCallback: addCastleCallback,
@@ -37,6 +42,7 @@ class NavigationHelper {
       );
     }
     else {
+      // Plugin path: chooser first (gallery without CameraX).
       route = MaterialPageRoute<Null>(
         builder: (_) => PreCameraScreen(
           addCastleCallback: addCastleCallback,
@@ -66,6 +72,7 @@ class NavigationHelper {
     bool replace=false,
     int numPicturesTaken = 0,
     String? gameTitle,
+    int? expectedRoomTileCount,
   }) {
     var route = MaterialPageRoute<Null>(
       builder: (_) => CastleConfirmScreen(
@@ -74,6 +81,7 @@ class NavigationHelper {
         addCastleCallback: addCastleCallback,
         numPicturesTaken: numPicturesTaken,
         gameTitle: gameTitle,
+        expectedRoomTileCount: expectedRoomTileCount,
       )
     );
     _goTo(context, route, replace: replace);
@@ -96,12 +104,79 @@ class NavigationHelper {
     _goTo(context, route, replace: replace);
   }
 
+  static goToPhotoWorkflowScreen(
+    BuildContext context,
+    String imagePath, {
+    ImageRotation rotation = ImageRotation.Normal,
+    bool replace = false,
+    int numPicturesTaken = 0,
+    required AddCastleToGameCallback addCastleCallback,
+    String? gameTitle,
+  }) {
+    OrientationHelper.lockPortrait();
+    final route = MaterialPageRoute<Null>(
+      builder: (_) => PhotoWorkflowScreen(
+        imagePath: imagePath,
+        rotation: rotation,
+        addCastleCallback: addCastleCallback,
+        numPicturesTaken: numPicturesTaken,
+        gameTitle: gameTitle,
+      ),
+    );
+    _goTo(context, route, replace: replace);
+  }
+
+  static goToTileSelectionFlowScreen(
+    BuildContext context,
+    String imagePath, {
+    bool replace = false,
+    int numPicturesTaken = 0,
+    required AddCastleToGameCallback addCastleCallback,
+    String? gameTitle,
+    int? expectedRoomTileCount,
+  }) {
+    OrientationHelper.lockPortrait();
+    final route = MaterialPageRoute<Null>(
+      builder: (_) => TileSelectionFlowScreen(
+        imagePath: imagePath,
+        addCastleCallback: addCastleCallback,
+        numPicturesTaken: numPicturesTaken,
+        gameTitle: gameTitle,
+        expectedRoomTileCount: expectedRoomTileCount,
+      ),
+    );
+    _goTo(context, route, replace: replace);
+  }
+
+  static goToCastleFrameScreen(BuildContext context, String imagePath, {
+    ImageRotation rotation = ImageRotation.Normal,
+    bool replace = false,
+    int numPicturesTaken = 0,
+    required AddCastleToGameCallback addCastleCallback,
+    String? gameTitle,
+    int? expectedRoomTileCount,
+  }) {
+    OrientationHelper.lockPortrait();
+    final route = MaterialPageRoute<Null>(
+      builder: (_) => CastleFrameScreen(
+        imagePath: imagePath,
+        rotation: rotation,
+        addCastleCallback: addCastleCallback,
+        numPicturesTaken: numPicturesTaken,
+        gameTitle: gameTitle,
+        expectedRoomTileCount: expectedRoomTileCount,
+      ),
+    );
+    _goTo(context, route, replace: replace);
+  }
+
   static goToPreCastleScreen(BuildContext context, String imagePath, {
     ImageRotation rotation=ImageRotation.Normal,
     bool replace=false,
     int numPicturesTaken = 0,
     required AddCastleToGameCallback addCastleCallback,
     String? gameTitle,
+    int? expectedRoomTileCount,
   }) {
     var route = MaterialPageRoute<Null>(
         builder: (_) => PreCastleScreen(
@@ -110,6 +185,7 @@ class NavigationHelper {
           addCastleCallback: addCastleCallback,
           numPicturesTaken: numPicturesTaken,
           gameTitle: gameTitle,
+          expectedRoomTileCount: expectedRoomTileCount,
         )
     );
     _goTo(context, route, replace: replace);

@@ -97,16 +97,38 @@ void main() {
       );
       expect(
         withJester.any((t) => t.name == 'RoyalAttendantJester'),
-        isFalse,
+        isTrue,
       );
-      expect(withJester.where((t) => t.isRoyalAttendant()).length, 3);
+      expect(withJester.where((t) => t.isRoyalAttendant()).length, 4);
 
-      final atAttendantCap = TokenTileGrid.filterTokenPickerTiles(
+      expect(
+        TokenTileGrid.resolveTokenToAdd(
+          RoyalAttendantJester(),
+          [RoyalAttendantJester()],
+        ).id,
+        TileId.RoyalAttendantJester,
+      );
+
+      final twoAttendants = TokenTileGrid.filterTokenPickerTiles(
         inventory: inventory,
         currentTokens: [RoyalAttendantJester(), RoyalAttendantKnight()],
       );
-      expect(atAttendantCap.where((t) => t.isRoyalAttendant()), isEmpty);
-      expect(atAttendantCap.where((t) => t.isBonusCard()).length, 3);
+      expect(twoAttendants.where((t) => t.isRoyalAttendant()).length, 4);
+      expect(twoAttendants.where((t) => t.isBonusCard()).length, 3);
+
+      final sevenJesters = List<Tile>.generate(
+        TokenTileGrid.maxCopiesPerRoyalAttendantType,
+        (_) => RoyalAttendantJester(),
+      );
+      final atJesterCap = TokenTileGrid.filterTokenPickerTiles(
+        inventory: inventory,
+        currentTokens: sevenJesters,
+      );
+      expect(
+        atJesterCap.any((t) => t.name == 'RoyalAttendantJester'),
+        isFalse,
+      );
+      expect(atJesterCap.where((t) => t.isRoyalAttendant()).length, 3);
 
       final atBonusCap = TokenTileGrid.filterTokenPickerTiles(
         inventory: inventory,
@@ -185,6 +207,24 @@ void main() {
       expect(result.structural.items[5].id, TileId.Kitchen);
       expect(result.structural.items[4].isEmpty(), isTrue);
       expect(result.structural.items[6].tileType, TileType.ThroneRoom);
+    });
+
+    test('extract of saved token strip does not pack rooms toward throne', () {
+      // Saved merge: attendants on row 0, kitchen left of a gap beside throne.
+      final grid = GridList<Tile>(5, [
+        RoyalAttendantJester(), Empty(), Empty(), Empty(), Empty(),
+        Empty(), Kitchen(), Empty(), ThroneRoomPerCorridorFood(), Placeholder(),
+      ]);
+
+      final result = TokenTileGrid.extractTokenTiles(
+        grid,
+        getEmpty: () => Empty(),
+      );
+
+      expect(result.tokens.single.isRoyalAttendant(), isTrue);
+      expect(result.structural.items[6].id, TileId.Kitchen);
+      expect(result.structural.items[7].isEmpty(), isTrue);
+      expect(result.structural.items[8].tileType, TileType.ThroneRoom);
     });
 
     test('extract closes ground-row gap to the right of placeholder', () {

@@ -27,6 +27,7 @@ void main() {
   test('G4', testG4);
 
   test('TwoOfTheSameRoyalAttendants', testTwoOfTheSameRoyalAttendants);
+  test('SevenOfTheSameRoyalAttendant', testSevenOfTheSameRoyalAttendant);
 
   test('ZZTest', zzTest);
   test('corridorsTest', corridorsTest);
@@ -1068,6 +1069,22 @@ void testTwoOfTheSameRoyalAttendants() {
     TileId.SnakePit: 1,
   };
   _testCastleHelper(12, tiles, [], expectedScores);
+}
+
+void testSevenOfTheSameRoyalAttendant() {
+  var tiles = new GridList<Tile>(4, [
+    RoyalAttendantTaylor(), RoyalAttendantTaylor(), RoyalAttendantTaylor(), Empty(),
+    HallOfSculptures(), ThroneRoomPerLivingCorridor(), Placeholder(), Empty(),
+    KnightRoom(), Empty(), SnakePit(), Empty()
+  ]);
+  var expectedScores = {
+    TileId.RoyalAttendantTaylor: 12,
+    TileId.HallOfSculptures: 1,
+    TileId.ThroneRoomPerLivingCorridor: 2,
+    TileId.KnightRoom: 0,
+    TileId.SnakePit: 1,
+  };
+  _testCastleHelper(16, tiles, [], expectedScores);
 }
 
 void zzTest() {

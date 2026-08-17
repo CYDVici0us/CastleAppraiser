@@ -23,6 +23,7 @@ class PreCastleScreen extends StatefulWidget {
   final ImageRotation rotation;
   final AddCastleToGameCallback addCastleCallback;
   final String? gameTitle;
+  final int? expectedRoomTileCount;
 
   PreCastleScreen({
     required this.imagePath,
@@ -30,6 +31,7 @@ class PreCastleScreen extends StatefulWidget {
     this.rotation = ImageRotation.Normal,
     this.numPicturesTaken=0,
     this.gameTitle,
+    this.expectedRoomTileCount,
   });
 
   @override
@@ -47,8 +49,10 @@ class _PreCastleScreenState extends State<PreCastleScreen> {
   void initState() {
     super.initState();
 
-    Future.delayed(Duration.zero, () async {
-      _processImage();
+    // Let the previous camera route finish disposing CameraX before Flex.
+    Future.delayed(const Duration(milliseconds: 200), () async {
+      if (!mounted) return;
+      await _processImage();
     });
   }
 
@@ -74,7 +78,10 @@ class _PreCastleScreenState extends State<PreCastleScreen> {
 
     try {
       await store.prepareForScoring();
-      var guesses = await store.runOnImage(widget.imagePath);
+      var guesses = await store.runOnImage(
+        widget.imagePath,
+        expectedRoomTileCount: widget.expectedRoomTileCount,
+      );
 
       if (mounted) {
 
@@ -95,6 +102,7 @@ class _PreCastleScreenState extends State<PreCastleScreen> {
             addCastleCallback: widget.addCastleCallback,
             numPicturesTaken: widget.numPicturesTaken,
             gameTitle: widget.gameTitle,
+            expectedRoomTileCount: widget.expectedRoomTileCount,
           );
           return;
         }
