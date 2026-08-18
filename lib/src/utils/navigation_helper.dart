@@ -12,6 +12,7 @@ import 'package:btcc/src/screens/pre_camera_screen.dart';
 import 'package:btcc/src/screens/pre_castle_screen.dart';
 import 'package:btcc/src/screens/tile_selection_flow_screen.dart';
 import 'package:btcc/src/state/camera_store.dart';
+import 'package:btcc/src/tflite/cell_guess_info.dart';
 import 'package:btcc/src/utils/orientation_helper.dart';
 import 'package:btcc/src/utils/typedefs.dart';
 import 'package:flutter/material.dart';
@@ -73,6 +74,8 @@ class NavigationHelper {
     int numPicturesTaken = 0,
     String? gameTitle,
     int? expectedRoomTileCount,
+    Map<int, CellGuessInfo>? cellGuesses,
+    bool offerGridMode = false,
   }) {
     var route = MaterialPageRoute<Null>(
       builder: (_) => CastleConfirmScreen(
@@ -82,6 +85,8 @@ class NavigationHelper {
         numPicturesTaken: numPicturesTaken,
         gameTitle: gameTitle,
         expectedRoomTileCount: expectedRoomTileCount,
+        cellGuesses: cellGuesses,
+        offerGridMode: offerGridMode,
       )
     );
     _goTo(context, route, replace: replace);

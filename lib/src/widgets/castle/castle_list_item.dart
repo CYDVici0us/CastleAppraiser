@@ -78,12 +78,11 @@ class CastleListItem extends StatelessWidget {
       borderRadius: BorderRadius.circular(20.0),
       color: color,
       child: Padding(
-        padding: EdgeInsets.fromLTRB(4, dragHandle != null ? 0 : 8, 4, 8),
+        padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (dragHandle != null) Center(child: dragHandle!),
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -135,6 +134,11 @@ class CastleListItem extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (dragHandle != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                    child: dragHandle!,
+                  ),
                 if (_showMenu)
                   PopupMenuButton<String>(
                     padding: EdgeInsets.zero,

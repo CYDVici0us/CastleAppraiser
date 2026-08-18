@@ -40,11 +40,41 @@ void main() {
         imageHeight: 800,
         layoutSize: layout,
       );
-      // Inflated slightly, still near the frame.
+      // Inflated to include bonus cards / attendants beside the framed castle.
       expect(crop.left, lessThan(50));
       expect(crop.top, lessThan(100));
       expect(crop.width, greaterThan(200));
       expect(crop.height, greaterThan(150));
+    });
+
+    test('forThroneCalibration keeps 2:1 aspect for square grid cells', () {
+      const frame = Rect.fromLTWH(100, 200, 200, 100);
+      const layout = Size(1000, 800);
+      final crop = CastleFrameGeom.imageCropRect(
+        frame: frame,
+        transform: Matrix4.identity(),
+        imageWidth: 1000,
+        imageHeight: 800,
+        layoutSize: layout,
+        forThroneCalibration: true,
+      );
+      expect(crop.width / crop.height, closeTo(2.0, 0.01));
+    });
+
+    test('crop includes ~2 tile columns for side tokens', () {
+      const frame = Rect.fromLTWH(200, 100, 400, 550);
+      const layout = Size(1200, 900);
+      final crop = CastleFrameGeom.imageCropRect(
+        frame: frame,
+        transform: Matrix4.identity(),
+        imageWidth: 1200,
+        imageHeight: 900,
+        layoutSize: layout,
+      );
+      final tileW = 400 / CastleTypicalExtents.baseWidthTypical;
+      expect(crop.width, greaterThan(400 + tileW * 3));
+      expect(crop.left, lessThan(200 - tileW));
+      expect(crop.right, greaterThan(600 + tileW));
     });
 
     test('coverFrame scales so both axes cover the frame', () {

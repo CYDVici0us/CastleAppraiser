@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:btcc/src/tflite/castle_typical_extents.dart';
@@ -58,9 +59,21 @@ class CastleFrameGeom {
 
   /// Map a viewport point through the inverse of [transform] into layout
   /// coordinates (the [InteractiveViewer] child space).
+  ///
+  /// Prefer [viewportToLayoutFromController] when a [TransformationController]
+  /// is available — it uses the same [TransformationController.toScene] path
+  /// as [InteractiveViewer] gestures.
   static Offset viewportToLayout(Offset viewportPoint, Matrix4 transform) {
     final inv = Matrix4.inverted(transform);
     return MatrixUtils.transformPoint(inv, viewportPoint);
+  }
+
+  /// Viewport → layout via [TransformationController.toScene].
+  static Offset viewportToLayoutFromController(
+    Offset viewportPoint,
+    TransformationController controller,
+  ) {
+    return controller.toScene(viewportPoint);
   }
 
   /// Layout coords → full-resolution image pixels.
@@ -87,35 +100,84 @@ class CastleFrameGeom {
     );
   }
 
+  /// Viewport → image pixels using [TransformationController.toScene].
+  static Offset viewportToImageFromController(
+    Offset viewportPoint,
+    TransformationController controller, {
+    required Size imageSize,
+    required Size layoutSize,
+  }) {
+    return layoutToImage(
+      viewportToLayoutFromController(viewportPoint, controller),
+      imageSize: imageSize,
+      layoutSize: layoutSize,
+    );
+  }
+
+  /// Layout → viewport using the same forward transform as the grid overlay.
+  static Offset layoutToViewport(Offset layoutPoint, Matrix4 transform) {
+    return MatrixUtils.transformPoint(transform, layoutPoint);
+  }
+
   /// Image-space axis-aligned crop covering [frame] under [transform], clamped
   /// to the bitmap and slightly inflated so edge tiles are not clipped.
+  ///
+  /// When [forThroneCalibration] is true, only a small symmetric margin is
+  /// applied and the result is forced to 2:1 (two square tiles wide × one tall)
+  /// so grid cells stay square on the mark step.
   static Rect imageCropRect({
     required Rect frame,
     required Matrix4 transform,
     required int imageWidth,
     required int imageHeight,
     required Size layoutSize,
+    TransformationController? controller,
+    bool forThroneCalibration = false,
   }) {
     final scale = layoutToImageScale(
       Size(imageWidth.toDouble(), imageHeight.toDouble()),
       layoutSize,
     );
+    Offset toLayout(Offset viewportPoint) => controller != null
+        ? viewportToLayoutFromController(viewportPoint, controller)
+        : viewportToLayout(viewportPoint, transform);
     final corners = <Offset>[
-      viewportToLayout(frame.topLeft, transform),
-      viewportToLayout(frame.topRight, transform),
-      viewportToLayout(frame.bottomLeft, transform),
-      viewportToLayout(frame.bottomRight, transform),
+      toLayout(frame.topLeft),
+      toLayout(frame.topRight),
+      toLayout(frame.bottomLeft),
+      toLayout(frame.bottomRight),
     ];
     var minX = corners.map((o) => o.dx * scale).reduce(math.min);
     var maxX = corners.map((o) => o.dx * scale).reduce(math.max);
     var minY = corners.map((o) => o.dy * scale).reduce(math.min);
     var maxY = corners.map((o) => o.dy * scale).reduce(math.max);
 
-    final pad = math.max(4.0, (maxX - minX).abs() * 0.03);
-    minX -= pad;
-    maxX += pad;
-    minY -= pad;
-    maxY += pad;
+    final spanX = (maxX - minX).abs();
+    final spanY = (maxY - minY).abs();
+    final edgePad = math.max(4.0, spanX * 0.03);
+    if (forThroneCalibration) {
+      minX -= edgePad;
+      maxX += edgePad;
+      minY -= edgePad;
+      maxY += edgePad;
+    } else {
+      // Estimate tile size from the framed castle so bonus cards / attendants
+      // sitting beside the throne are still in the crop.
+      final tileW = spanX / CastleTypicalExtents.baseWidthTypical;
+      final tileH = spanY / CastleTypicalExtents.verticalSpanMaxTiles;
+      final padX = math.max(
+        edgePad,
+        tileW * CastleTypicalExtents.tokenMarginTilesX,
+      );
+      final padY = math.max(
+        edgePad,
+        tileH * CastleTypicalExtents.tokenMarginTilesY,
+      );
+      minX -= padX;
+      maxX += padX;
+      minY -= padY;
+      maxY += padY;
+    }
 
     minX = minX.clamp(0.0, imageWidth.toDouble());
     maxX = maxX.clamp(0.0, imageWidth.toDouble());
@@ -125,7 +187,58 @@ class CastleFrameGeom {
     if (maxX - minX < 8 || maxY - minY < 8) {
       return Rect.fromLTWH(0, 0, imageWidth.toDouble(), imageHeight.toDouble());
     }
-    return Rect.fromLTRB(minX, minY, maxX, maxY);
+    var crop = Rect.fromLTRB(minX, minY, maxX, maxY);
+    if (forThroneCalibration) {
+      crop = enforceThroneAspect(
+        crop,
+        imageWidth: imageWidth,
+        imageHeight: imageHeight,
+      );
+    }
+    return crop;
+  }
+
+  /// Force [rect] to 2:1 width:height (throne strip) while staying on-image.
+  static Rect enforceThroneAspect(
+    Rect rect, {
+    required int imageWidth,
+    required int imageHeight,
+  }) {
+    final h = rect.height;
+    if (h <= 0) return rect;
+    final w = h * 2;
+    final cx = rect.center.dx;
+    final cy = rect.center.dy;
+    var left = cx - w / 2;
+    var right = cx + w / 2;
+    var top = cy - h / 2;
+    var bottom = cy + h / 2;
+
+    if (left < 0) {
+      right -= left;
+      left = 0;
+    }
+    if (right > imageWidth) {
+      left -= right - imageWidth;
+      right = imageWidth.toDouble();
+    }
+    if (top < 0) {
+      bottom -= top;
+      top = 0;
+    }
+    if (bottom > imageHeight) {
+      top -= bottom - imageHeight;
+      bottom = imageHeight.toDouble();
+    }
+
+    left = left.clamp(0.0, imageWidth.toDouble());
+    right = right.clamp(0.0, imageWidth.toDouble());
+    top = top.clamp(0.0, imageHeight.toDouble());
+    bottom = bottom.clamp(0.0, imageHeight.toDouble());
+    if (right - left < 8 || bottom - top < 8) {
+      return rect;
+    }
+    return Rect.fromLTRB(left, top, right, bottom);
   }
 
   /// Initial transform so the image covers [frame] (cover fit), centered.
@@ -310,32 +423,57 @@ Future<Size> decodeImagePixelSize(String path) async {
 
 /// Decode bitmap pixels in the same orientation the user sees when aligning
 /// the photo (EXIF baked). Grid alignment rects must use this decoder.
-Future<img.Image> decodeOrientedImage(String path) async {
+///
+/// [expectedSize] is the Flutter-codec size (same as [decodeImagePixelSize] /
+/// [Image.file]). If package:image's EXIF bake does not match, we fall back
+/// to the Flutter codec so crops line up with the grid the user marked.
+Future<img.Image> decodeOrientedImage(
+  String path, {
+  Size? expectedSize,
+}) async {
   final bytes = await File(path).readAsBytes();
-  var decoded = img.decodeImage(bytes);
+  final decoded = img.decodeImage(bytes);
   if (decoded != null) {
     final baked = img.bakeOrientation(decoded);
     if (baked.width != decoded.width || baked.height != decoded.height) {
       log('decodeOrientedImage EXIF bake '
           '${decoded.width}x${decoded.height} → ${baked.width}x${baked.height}');
     }
-    return baked;
+    if (expectedSize == null || _sizeMatches(baked, expectedSize)) {
+      return baked;
+    }
+    log('decodeOrientedImage size mismatch vs display '
+        '${baked.width}x${baked.height} vs '
+        '${expectedSize.width.round()}x${expectedSize.height.round()} '
+        '— using Flutter codec');
+  } else {
+    log('decodeOrientedImage: package:image failed; using Flutter codec');
   }
 
-  log('decodeOrientedImage: package:image failed; using Flutter codec');
+  return _decodeViaFlutterCodec(bytes);
+}
+
+bool _sizeMatches(img.Image image, Size expected) {
+  return (image.width - expected.width.round()).abs() <= 1 &&
+      (image.height - expected.height.round()).abs() <= 1;
+}
+
+Future<img.Image> _decodeViaFlutterCodec(Uint8List bytes) async {
   final codec = await ui.instantiateImageCodec(bytes);
   final frame = await codec.getNextFrame();
   final uiImage = frame.image;
+  final width = uiImage.width;
+  final height = uiImage.height;
   final bd = await uiImage.toByteData(format: ui.ImageByteFormat.rawRgba);
   uiImage.dispose();
   if (bd == null) {
-    throw StateError('Could not decode image at $path');
+    throw StateError('Could not decode image via Flutter codec');
   }
   final rgba = bd.buffer.asUint8List();
-  final out = img.Image(width: uiImage.width, height: uiImage.height);
+  final out = img.Image(width: width, height: height);
   var i = 0;
-  for (var y = 0; y < uiImage.height; y++) {
-    for (var x = 0; x < uiImage.width; x++) {
+  for (var y = 0; y < height; y++) {
+    for (var x = 0; x < width; x++) {
       out.setPixelRgba(x, y, rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]);
       i += 4;
     }

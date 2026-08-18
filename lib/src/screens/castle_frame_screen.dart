@@ -270,8 +270,10 @@ class _CastleFrameScreenState extends State<CastleFrameScreen> {
                             width: frame.width,
                             child: Text(
                               _portraitFrame
-                                  ? 'Portrait (~8×11 tiles) — pinch & drag to fit'
-                                  : 'Landscape (~10×8 tiles) — pinch & drag to fit',
+                                  ? 'Portrait castle — include basement, wings, '
+                                      'bonus cards & attendants'
+                                  : 'Landscape castle — include basement, wings, '
+                                      'bonus cards & attendants',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.9),

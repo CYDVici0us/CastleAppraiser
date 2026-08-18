@@ -267,8 +267,8 @@ class _PhotoWorkflowScreenState extends State<PhotoWorkflowScreen> {
                     hintText: 'e.g. 22',
 
                     helperText:
-                        'Room tiles only, not counting the throne — helps '
-                        'full scan keep trying and shows progress in Grid mode',
+                        'Room tiles only (not throne). Helps scan retry and '
+                        'Grid progress. Tip: ~20–24 for a typical castle.',
 
                     errorText: _inputError,
 

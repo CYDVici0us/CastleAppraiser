@@ -1,5 +1,6 @@
 
 import 'dart:collection';
+import 'dart:math' as math;
 
 import 'package:btcc/src/utils/log.dart';
 import 'package:btcc/src/models/exports.dart';
@@ -7,14 +8,18 @@ import 'package:btcc/src/tflite/tflite_objects.dart';
 import 'package:btcc/src/utils/grid_expander.dart';
 import 'package:btcc/src/utils/statistics_helper.dart';
 import 'package:btcc/src/utils/tile_helper.dart';
+import 'package:btcc/src/tflite/castle_build_result.dart';
+import 'package:btcc/src/tflite/castle_conversion.dart';
+import 'package:btcc/src/utils/token_tile_grid.dart';
 
 class TfliteHelper {
 
   /// Non-max suppression that keeps neighboring *different* tiles.
   /// Same label: suppress when IoU > [sameClassIou].
   /// Different label: only suppress near-duplicate boxes (IoU > [crossClassIou]).
-  /// Throne rooms are never removed by cross-class overlap (attendants/bonus
-  /// cards sit on them and would otherwise wipe the TR* box).
+  /// Throne rooms and tokens (bonus cards / royal attendants) are never removed
+  /// by cross-class overlap. Attendants may sit on the throne *or* beside it,
+  /// and a neighboring room box must not wipe them.
   static List<TfliteProcessedGuess> classAwareNms(
     List<TfliteProcessedGuess> guesses, {
     double sameClassIou = 0.45,
@@ -29,8 +34,7 @@ class TfliteHelper {
       copy.removeWhere((g) {
         final iou = top.calculateOverlap(g);
         if (g.label == top.label) return iou > sameClassIou;
-        if (isThroneRoom(g)) return false;
-        if (isThroneRoom(top) && isNonTile(g)) return false;
+        if (isThroneRoom(g) || isNonTile(g)) return false;
         final gArea = (g.xMax - g.xMin) * (g.yMax - g.yMin);
         final topArea = (top.xMax - top.xMin) * (top.yMax - top.yMin);
         if (gArea > topArea * 1.8) {
@@ -40,7 +44,68 @@ class TfliteHelper {
         return iou > crossClassIou;
       });
     }
-    return best;
+    return suppressNearbySameLabel(best);
+  }
+
+  /// How many copies of this detector label a castle may legally contain.
+  /// Unique rooms/thrones/bonus cards = 1; ball rooms/attendants = 2; tower/fountain/foyer = 5.
+  static int maxCopiesForLabel(Object label) {
+    if (label is! TileLabels) return 1;
+    switch (label) {
+      case TileLabels.FOUNTAIN:
+      case TileLabels.GRAND_FOYER:
+      case TileLabels.TOWER:
+        return 5;
+      case TileLabels.BRA:
+      case TileLabels.BRC:
+      case TileLabels.BRD:
+      case TileLabels.BRF:
+      case TileLabels.BRL:
+      case TileLabels.BRO:
+      case TileLabels.BRS:
+      case TileLabels.BRU:
+      case TileLabels.RAM:
+      case TileLabels.RAS:
+      case TileLabels.RAP:
+      case TileLabels.RAT:
+        return 2;
+      default:
+        return 1;
+    }
+  }
+
+  /// Drops weaker same-label boxes whose centers sit on the same physical tile.
+  /// Overlapping 8×8 windows often emit two Kitchen boxes with low IoU but
+  /// nearly the same center — classic NMS misses those.
+  static List<TfliteProcessedGuess> suppressNearbySameLabel(
+    List<TfliteProcessedGuess> guesses, {
+    double centerDistanceFactor = 0.7,
+  }) {
+    if (guesses.length < 2) return guesses;
+    final ranked = List<TfliteProcessedGuess>.from(guesses)
+      ..sort((a, b) => b.score.compareTo(a.score));
+    final kept = <TfliteProcessedGuess>[];
+    for (final g in ranked) {
+      final gCx = (g.xMin + g.xMax) / 2;
+      final gCy = (g.yMin + g.yMax) / 2;
+      final gSize = math.max(g.xMax - g.xMin, g.yMax - g.yMin);
+      var duplicate = false;
+      for (final k in kept) {
+        if (k.label != g.label) continue;
+        final kCx = (k.xMin + k.xMax) / 2;
+        final kCy = (k.yMin + k.yMax) / 2;
+        final kSize = math.max(k.xMax - k.xMin, k.yMax - k.yMin);
+        final thresh = centerDistanceFactor * math.max(gSize, kSize);
+        final dx = gCx - kCx;
+        final dy = gCy - kCy;
+        if (dx * dx + dy * dy < thresh * thresh) {
+          duplicate = true;
+          break;
+        }
+      }
+      if (!duplicate) kept.add(g);
+    }
+    return kept;
   }
 
   static double _intersectionArea(
@@ -68,7 +133,18 @@ class TfliteHelper {
     );
   }
 
-  static GridList<Tile> convertGuessesToCastle(List<TfliteProcessedGuess> pGuesses){
+  static CastleBuildResult convertGuessesToCastleWithInfo(
+    List<TfliteProcessedGuess> pGuesses,
+  ) {
+    return CastleConversion.convertGuessesToCastleWithInfo(pGuesses);
+  }
+
+  static GridList<Tile> convertGuessesToCastle(List<TfliteProcessedGuess> pGuesses) {
+    return convertGuessesToCastleWithInfo(pGuesses).grid;
+  }
+
+  /// Original minX/median-pitch binning (kept for regression tests).
+  static GridList<Tile> convertGuessesToCastleLegacy(List<TfliteProcessedGuess> pGuesses){
     if (pGuesses.isEmpty) {
       log('No guesses');
       return GridList<Tile>(3, createEmptyTileList(3, 3));
@@ -115,28 +191,9 @@ class TfliteHelper {
     TfliteProcessedGuess? throneRoomGuess;
     int? throneRoomBestX;
     int? throneRoomBestY;
-    final bonusCards = <({Tile tile, double score})>[];
-    final royalAttendants = <({Tile tile, double score})>[];
 
     for (final guess in guesses) {
-      if (isNonTile(guess)) {
-        final already = <Tile>[
-          ...bonusCards.map((e) => e.tile),
-          ...royalAttendants.map((e) => e.tile),
-        ];
-        final tile = getCorrectTile(guess, already);
-        switch (tile.tileType) {
-          case TileType.RoyalAttendant:
-            royalAttendants.add((tile: tile, score: guess.score));
-            break;
-          case TileType.BonusCard:
-            bonusCards.add((tile: tile, score: guess.score));
-            break;
-          default:
-            break;
-        }
-        continue;
-      }
+      if (isNonTile(guess)) continue;
 
       final bestx = getBestX(stats, guess) + 1;
       final besty = getBestY(stats, guess) + 1;
@@ -148,12 +205,16 @@ class TfliteHelper {
           throneRoomBestY = besty;
         }
       } else {
-        _placeIfEmptyOrBetter(
-          castleTiles,
-          bestx,
-          besty,
-          getCorrectTile(guess, castleTiles.items),
-        );
+        try {
+          _placeIfEmptyOrBetter(
+            castleTiles,
+            bestx,
+            besty,
+            getCorrectTile(guess, castleTiles.items),
+          );
+        } catch (ex) {
+          log('Skipping duplicate/exhausted ${guess.label}: $ex');
+        }
       }
     }
 
@@ -170,24 +231,118 @@ class TfliteHelper {
       );
     }
 
-    final topBonus = bonusCards.take(2).toList();
-    final topAttendants = royalAttendants.take(2).toList();
-    if (topBonus.isNotEmpty) {
-      _placeIfEmptyOrBetter(castleTiles, 0, 0, topBonus[0].tile);
-    }
-    if (topBonus.length > 1) {
-      _placeIfEmptyOrBetter(castleTiles, 1, 0, topBonus[1].tile);
-    }
-    if (topAttendants.isNotEmpty) {
-      _placeIfEmptyOrBetter(castleTiles, 2, 0, topAttendants[0].tile);
-    }
-    if (topAttendants.length > 1) {
-      _placeIfEmptyOrBetter(castleTiles, 3, 0, topAttendants[1].tile);
-    }
+    castleTiles = _placeTokensOnTopRow(
+      castleTiles,
+      collectTokenTiles(guesses),
+    );
 
     log('Resulting castle tiles:');
     log(castleTiles);
     return castleTiles;
+  }
+
+  /// Highest-scoring bonus cards (max 2) then all royal attendants.
+  static List<Tile> _collectTokenTilesFromScored({
+    required List<({Tile tile, double score})> bonus,
+    required List<({Tile tile, double score})> attendants,
+  }) {
+    final topBonus = List<({Tile tile, double score})>.from(bonus)
+      ..sort((a, b) => b.score.compareTo(a.score));
+    final topAttendants = List<({Tile tile, double score})>.from(attendants)
+      ..sort((a, b) => b.score.compareTo(a.score));
+    return [
+      ...topBonus
+          .take(TokenTileGrid.maxBonusCardsPerCastle)
+          .map((e) => e.tile),
+      ...topAttendants.map((e) => e.tile),
+    ];
+  }
+
+  /// Bonus cards and royal attendants from detections.
+  ///
+  /// Bonus cards whose center sits inside the room/throne cluster are treated
+  /// as unidentified rooms (gaps), not real bonus cards. Attendants may sit
+  /// on the throne, so they are kept from any position.
+  static List<Tile> collectTokenTiles(List<TfliteProcessedGuess> guesses) {
+    final bonus = <({Tile tile, double score})>[];
+    final attendants = <({Tile tile, double score})>[];
+    for (final guess in guesses) {
+      if (!isNonTile(guess)) continue;
+      final already = <Tile>[
+        ...bonus.map((e) => e.tile),
+        ...attendants.map((e) => e.tile),
+      ];
+      final tile = getCorrectTile(guess, already);
+      switch (tile.tileType) {
+        case TileType.RoyalAttendant:
+          attendants.add((tile: tile, score: guess.score));
+          break;
+        case TileType.BonusCard:
+          if (bonusCardInsideRoomCluster(guess, guesses)) continue;
+          bonus.add((tile: tile, score: guess.score));
+          break;
+        default:
+          break;
+      }
+    }
+    return _collectTokenTilesFromScored(bonus: bonus, attendants: attendants);
+  }
+
+  /// True when a bonus-card box is centered inside the castle rooms — typical
+  /// of a misclassified gap, not a card sitting beside the castle.
+  static bool bonusCardInsideRoomCluster(
+    TfliteProcessedGuess bonus,
+    List<TfliteProcessedGuess> guesses,
+  ) {
+    var minX = double.infinity;
+    var maxX = double.negativeInfinity;
+    var minY = double.infinity;
+    var maxY = double.negativeInfinity;
+    var count = 0;
+    for (final g in guesses) {
+      if (isNonTile(g)) continue;
+      minX = g.xMin < minX ? g.xMin : minX;
+      maxX = g.xMax > maxX ? g.xMax : maxX;
+      minY = g.yMin < minY ? g.yMin : minY;
+      maxY = g.yMax > maxY ? g.yMax : maxY;
+      count++;
+    }
+    if (count == 0) return false;
+    final cx = (bonus.xMin + bonus.xMax) / 2;
+    final cy = (bonus.yMin + bonus.yMax) / 2;
+    return cx > minX && cx < maxX && cy > minY && cy < maxY;
+  }
+
+  /// Writes tokens onto row 0 (original scan layout). If that row already has
+  /// rooms/throne, prepend a dedicated token strip instead of overwriting.
+  static GridList<Tile> _placeTokensOnTopRow(
+    GridList<Tile> grid,
+    List<Tile> tokens,
+  ) {
+    if (tokens.isEmpty) return grid;
+    var row0HasStructure = false;
+    for (var x = 0; x < grid.width && x < grid.items.length; x++) {
+      final t = grid.items[x];
+      if (!t.isEmpty() && !TokenTileGrid.isTokenTile(t)) {
+        row0HasStructure = true;
+        break;
+      }
+    }
+    if (row0HasStructure) {
+      return TokenTileGrid.mergeTokenTilesIntoGrid(
+        grid,
+        tokens,
+        getEmpty: () => Empty(),
+      );
+    }
+    var out = grid;
+    if (tokens.length > out.width) {
+      out = _expandWidth(out, tokens.length);
+    }
+    for (var i = 0; i < tokens.length; i++) {
+      out.items[i] = tokens[i];
+    }
+    return out;
   }
 
   /// Expands the grid if needed and places the 2-wide throne + placeholder.
@@ -406,7 +561,11 @@ class TfliteHelper {
         if(!isTileInList(currentTiles,TileId.BallRoomPerUtility2)) return TileHelper().getTileById(TileId.BallRoomPerUtility2);
         break;
       default:
-        return TileHelper().getTileByLabel(guess.label);
+        final tile = TileHelper().getTileByLabel(guess.label);
+        if (isTileInList(currentTiles, tile.id)) {
+          throw Exception('Could not find tile from guess label');
+        }
+        return tile;
     }
     
     throw new Exception("Could not find tile from guess label");
@@ -492,17 +651,48 @@ class TfliteHelper {
     }
     if (attendants.isEmpty) return null;
 
+    // Side attendants (beside the castle) must not pull the inferred throne
+    // off the room cluster. Prefer attendants on/near rooms (throne row).
+    var throneAttendants = attendants;
+    if (rooms.isNotEmpty) {
+      var rMinX = double.infinity;
+      var rMaxX = double.negativeInfinity;
+      var rMinY = double.infinity;
+      var rMaxY = double.negativeInfinity;
+      var sumW = 0.0;
+      var sumH = 0.0;
+      for (final r in rooms) {
+        rMinX = r.xMin < rMinX ? r.xMin : rMinX;
+        rMaxX = r.xMax > rMaxX ? r.xMax : rMaxX;
+        rMinY = r.yMin < rMinY ? r.yMin : rMinY;
+        rMaxY = r.yMax > rMaxY ? r.yMax : rMaxY;
+        sumW += r.xMax - r.xMin;
+        sumH += r.yMax - r.yMin;
+      }
+      final tileW = sumW / rooms.length;
+      final tileH = sumH / rooms.length;
+      final near = attendants.where((a) {
+        final cx = (a.xMin + a.xMax) / 2;
+        final cy = (a.yMin + a.yMax) / 2;
+        return cx >= rMinX - tileW * 1.5 &&
+            cx <= rMaxX + tileW * 1.5 &&
+            cy >= rMinY - tileH &&
+            cy <= rMaxY + tileH * 0.35;
+      }).toList();
+      if (near.isNotEmpty) throneAttendants = near;
+    }
+
     var sumCx = 0.0;
     var sumCy = 0.0;
-    for (final a in attendants) {
+    for (final a in throneAttendants) {
       sumCx += (a.xMin + a.xMax) / 2;
       sumCy += (a.yMin + a.yMax) / 2;
     }
-    final cx = sumCx / attendants.length;
-    final cy = sumCy / attendants.length;
+    final cx = sumCx / throneAttendants.length;
+    final cy = sumCy / throneAttendants.length;
 
     // Tile pitch from room boxes when available; else from attendants.
-    final pitchSrc = rooms.isNotEmpty ? rooms : attendants;
+    final pitchSrc = rooms.isNotEmpty ? rooms : throneAttendants;
     var sumW = 0.0;
     var sumH = 0.0;
     for (final g in pitchSrc) {

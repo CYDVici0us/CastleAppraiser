@@ -31,6 +31,13 @@ class CastleTypicalExtents {
   static const double landscapeFrameAspect =
       baseWidthWide / (verticalSpanTiles - 2); // ~10/8 wide castle
 
+  /// Extra crop columns so bonus cards and royal attendants beside the castle
+  /// (or on the throne) are not clipped when the user frames rooms only.
+  static const double tokenMarginTilesX = 2.0;
+
+  /// Extra crop rows for tokens sitting on/just above the throne row.
+  static const double tokenMarginTilesY = 1.25;
+
   /// Expand a pass-1 detection AABB so refine pans cover basement + tower
   /// even when only the center stack was detected.
   static ({

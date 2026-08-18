@@ -341,7 +341,6 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
 
     final copy = _castleTiles;
     copy.items[index] = Empty();
-    TilePlacement.compactTowardGround(copy, getEmpty: () => Empty());
     final normalized = _normalize(copy);
     final mapped = normalized.mapIndex(index);
 
@@ -382,10 +381,6 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
         ),
         getEmpty: () => Empty(),
       );
-      if (result == OrthogonalMoveResult.relocated ||
-          result == OrthogonalMoveResult.pushed) {
-        TilePlacement.compactTowardGround(copy, getEmpty: () => Empty());
-      }
       if (result != OrthogonalMoveResult.failed) {
         final normalized = _normalize(copy);
         setState(() {
@@ -422,9 +417,6 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
         }
       }
       copy.items[index] = item;
-      if (source != null) {
-        TilePlacement.compactTowardGround(copy, getEmpty: () => Empty());
-      }
     }
 
     final normalized = _normalize(copy);
@@ -527,12 +519,6 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     final isSecret = tile.isSecret();
     // Secrets keep printed identity in the details panel (never scoring duplicate).
     final displayType = isSecret ? tile.trueTileType : tile.tileType;
-    final title = isEmpty
-        ? 'Empty cell'
-        : displayType == TileType.Special ||
-                TokenTileGrid.isTokenType(displayType)
-            ? TokenTileGrid.displayName(tile)
-            : tile.name;
     final showScoring =
         !isEmpty && ScoringBlurb.hasContent(tile, includeDecoration: false);
     final showGrid = !isEmpty && ScoringPlacementMapping.shouldShow(tile);
@@ -541,11 +527,6 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     final invalids = isSearchPreview
         ? const <PlacementInvalidReason>[]
         : TilePlacement.invalidReasons(_castleTiles, index);
-    // Compact title for wide tiles (throne / activity) so the image can be larger.
-    final titleStyle = (isThrone || isActivity
-            ? theme.textTheme.titleMedium
-            : theme.textTheme.titleLarge)
-        ?.copyWith(fontWeight: FontWeight.w700);
     final metaStyle = theme.textTheme.bodyMedium?.copyWith(
       color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
     );
@@ -565,33 +546,7 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Balance the close button so the title stays visually centered.
-            const SizedBox(width: 40),
-            Expanded(
-              child: ScoringBlurb.titleWithCategories(
-                title: title,
-                style: titleStyle,
-                textAlign: TextAlign.center,
-              ),
-            ),
-            SizedBox(
-              width: 40,
-              child: IconButton(
-                tooltip: 'Clear selection',
-                icon: const Icon(Icons.close),
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 40, minHeight: 36),
-                onPressed: _clearGridSelection,
-              ),
-            ),
-          ],
-        ),
         if (!isEmpty) ...[
-          const SizedBox(height: 4),
           if (isThrone)
             LayoutBuilder(
               builder: (context, constraints) {
@@ -608,11 +563,13 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
                       alignToEdges: true,
                     ),
                     const SizedBox(height: 4),
-                    TileWidget(
-                      tile,
-                      scale: scale,
-                      showOutline: true,
-                      showInvalidBadge: invalids.isNotEmpty,
+                    Center(
+                      child: TileWidget(
+                        tile,
+                        scale: scale,
+                        showOutline: true,
+                        showInvalidBadge: invalids.isNotEmpty,
+                      ),
                     ),
                     if (showDetails) ...[
                       const SizedBox(height: sectionGap),
@@ -778,7 +735,58 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     );
   }
 
-  Widget _getSelectionActionBar() {
+  Widget _compactSelectionFab({
+    required String heroTag,
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+  }) {
+    return FloatingActionButton.extended(
+      heroTag: heroTag,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      extendedPadding: const EdgeInsets.symmetric(horizontal: 12),
+      extendedIconLabelSpacing: 6,
+      icon: Icon(icon, size: 18),
+      label: Text(label, style: const TextStyle(fontSize: 13)),
+      onPressed: onPressed,
+    );
+  }
+
+  /// One equal-width column per button, centered in each slot.
+  Widget _evenlySpacedButtonRow(List<Widget> buttons) {
+    if (buttons.isEmpty) return const SizedBox.shrink();
+    return Row(
+      children: [
+        for (final button in buttons)
+          Expanded(
+            child: Center(child: button),
+          ),
+      ],
+    );
+  }
+
+  Widget _getSelectionDetailsBody() {
+    final index = _panelIndex ?? _selectedIndex;
+    if (index == null || index < 0 || index >= _castleTiles.items.length) {
+      return const SizedBox.shrink();
+    }
+
+    final gridTile = _castleTiles.items[index];
+    final searchTile = _selectedSearchTile;
+    final showingSearchPreview = searchTile != null;
+    final detailsTile = searchTile ?? gridTile;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
+      child: _getSelectedTileDetails(
+        index,
+        detailsTile,
+        isSearchPreview: showingSearchPreview,
+      ),
+    );
+  }
+
+  Widget _getSelectionActionButtons() {
     final index = _panelIndex ?? _selectedIndex;
     if (index == null || index < 0 || index >= _castleTiles.items.length) {
       return const SizedBox.shrink();
@@ -791,7 +799,6 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     final canAdd = isEmpty && _canAddAt(index);
     final searchTile = _selectedSearchTile;
     final showingSearchPreview = searchTile != null;
-    final detailsTile = searchTile ?? gridTile;
     final canApplySearch = searchTile != null &&
         (isEmpty
             ? canAdd && _canPlaceTileAt(index, searchTile)
@@ -802,28 +809,10 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
                   allowAboveOutdoor: true,
                   requireSupport: false,
                 ));
-    // Remove only when viewing the grid tile (search cleared / no preview).
     final showRemove = isMovable && !_hasSearchTerm && !showingSearchPreview;
 
-    Widget compactFab({
-      required String heroTag,
-      required IconData icon,
-      required String label,
-      required VoidCallback onPressed,
-    }) {
-      return FloatingActionButton.extended(
-        heroTag: heroTag,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        extendedPadding: const EdgeInsets.symmetric(horizontal: 12),
-        extendedIconLabelSpacing: 6,
-        icon: Icon(icon, size: 18),
-        label: Text(label, style: const TextStyle(fontSize: 13)),
-        onPressed: onPressed,
-      );
-    }
-
     final applyFab = canApplySearch
-        ? compactFab(
+        ? _compactSelectionFab(
             heroTag: 'apply_search_tile',
             icon: isEmpty ? Icons.add : Icons.edit,
             label: isEmpty ? 'Add selected tile' : 'Update selected tile',
@@ -831,69 +820,57 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
           )
         : null;
 
+    final hasAny = applyFab != null ||
+        (canAdd && !_hasSearchTerm) ||
+        (isMovable && !_hasSearchTerm) ||
+        (isThrone && !_hasSearchTerm) ||
+        showRemove;
+    if (!hasAny) return const SizedBox.shrink();
+
+    final buttons = <Widget>[
+      if (applyFab != null)
+        applyFab!
+      else ...[
+        if (canAdd && !_hasSearchTerm)
+          _compactSelectionFab(
+            heroTag: 'add_tile',
+            icon: Icons.add,
+            label: 'New Tile',
+            onPressed: _openTilePickerForSelected,
+          ),
+        if (isMovable && !_hasSearchTerm)
+          _compactSelectionFab(
+            heroTag: 'update_tile',
+            icon: Icons.edit,
+            label: 'Update',
+            onPressed: _openTilePickerForSelected,
+          ),
+        if (isThrone && !_hasSearchTerm)
+          _compactSelectionFab(
+            heroTag: 'update_tr_selected',
+            icon: Icons.edit,
+            label: 'Update',
+            onPressed: _showThroneRoomPicker,
+          ),
+        if (showRemove)
+          _compactSelectionFab(
+            heroTag: 'remove_tile',
+            icon: Icons.delete,
+            label: 'Remove',
+            onPressed: _removeSelectedTile,
+          ),
+      ],
+    ];
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 6, 10, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _getSelectedTileDetails(
-            index,
-            detailsTile,
-            isSearchPreview: showingSearchPreview,
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          floatingActionButtonTheme: const FloatingActionButtonThemeData(
+            extendedSizeConstraints: BoxConstraints.tightFor(height: 40),
           ),
-          const SizedBox(height: 8),
-          Theme(
-            data: Theme.of(context).copyWith(
-              floatingActionButtonTheme: const FloatingActionButtonThemeData(
-                extendedSizeConstraints: BoxConstraints.tightFor(height: 40),
-              ),
-            ),
-            child: applyFab != null
-                ? Center(child: applyFab)
-                : Row(
-                    children: [
-                      Expanded(
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            if (canAdd && !_hasSearchTerm)
-                              compactFab(
-                                heroTag: 'add_tile',
-                                icon: Icons.add,
-                                label: 'New Tile',
-                                onPressed: _openTilePickerForSelected,
-                              ),
-                            if (isMovable && !_hasSearchTerm)
-                              compactFab(
-                                heroTag: 'update_tile',
-                                icon: Icons.edit,
-                                label: 'Update',
-                                onPressed: _openTilePickerForSelected,
-                              ),
-                            if (isThrone && !_hasSearchTerm)
-                              compactFab(
-                                heroTag: 'update_tr_selected',
-                                icon: Icons.edit,
-                                label: 'Update',
-                                onPressed: _showThroneRoomPicker,
-                              ),
-                          ],
-                        ),
-                      ),
-                      if (showRemove)
-                        compactFab(
-                          heroTag: 'remove_tile',
-                          icon: Icons.delete,
-                          label: 'Remove',
-                          onPressed: _removeSelectedTile,
-                        ),
-                    ],
-                  ),
-          ),
-          const SizedBox(height: 8),
-        ],
+        ),
+        child: _evenlySpacedButtonRow(buttons),
       ),
     );
   }
@@ -968,6 +945,63 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     );
   }
 
+  String _selectionPanelTitle(Tile tile) {
+    if (tile.isEmpty()) return 'Empty cell';
+    final displayType =
+        tile.isSecret() ? tile.trueTileType : tile.tileType;
+    if (displayType == TileType.Special ||
+        TokenTileGrid.isTokenType(displayType)) {
+      return TokenTileGrid.displayName(tile);
+    }
+    return tile.name;
+  }
+
+  /// Title + close stay pinned while tile details scroll.
+  Widget _getSelectionPanelHeader() {
+    final index = _panelIndex;
+    if (index == null || index < 0 || index >= _castleTiles.items.length) {
+      return const SizedBox.shrink();
+    }
+
+    final theme = Theme.of(context);
+    final gridTile = _castleTiles.items[index];
+    final tile = _selectedSearchTile ?? gridTile;
+    final isThrone = tile.isThroneRoom();
+    final isActivity = tile.tileType == TileType.Activity;
+    final titleStyle = (isThrone || isActivity
+            ? theme.textTheme.titleMedium
+            : theme.textTheme.titleLarge)
+        ?.copyWith(fontWeight: FontWeight.w700);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 6, 4, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(width: 36),
+          Expanded(
+            child: ScoringBlurb.titleWithCategories(
+              title: _selectionPanelTitle(tile),
+              style: titleStyle,
+              textAlign: TextAlign.center,
+            ),
+          ),
+          SizedBox(
+            width: 40,
+            child: IconButton(
+              tooltip: 'Clear selection',
+              icon: const Icon(Icons.close),
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 36),
+              onPressed: _clearGridSelection,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _getSelectionPanel() {
     final theme = Theme.of(context);
     final index = _panelIndex;
@@ -988,20 +1022,19 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(10.5),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.55,
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _getSelectionActionBar(),
-                  _getSelectionSearch(),
-                ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _getSelectionPanelHeader(),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: _getSelectionDetailsBody(),
+                ),
               ),
-            ),
+              _getSelectionSearch(),
+              _getSelectionActionButtons(),
+            ],
           ),
         ),
       ),
@@ -1009,27 +1042,12 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
   }
 
   Widget _getAnimatedSelectionPanel() {
-    return AnimatedBuilder(
-      animation: _panelController,
-      builder: (context, child) {
-        if (_panelController.value == 0 && _panelIndex == null) {
-          return const SizedBox.shrink();
-        }
-        return ClipRect(
-          child: Align(
-            alignment: Alignment.topCenter,
-            heightFactor: _panelController.value,
-            child: SlideTransition(
-              position: _panelSlide,
-              child: IgnorePointer(
-                ignoring: _panelController.status == AnimationStatus.reverse,
-                child: child,
-              ),
-            ),
-          ),
-        );
-      },
-      child: _getSelectionPanel(),
+    return SlideTransition(
+      position: _panelSlide,
+      child: IgnorePointer(
+        ignoring: _panelController.status == AnimationStatus.reverse,
+        child: _getSelectionPanel(),
+      ),
     );
   }
 
@@ -1282,7 +1300,7 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
         builder: (context, index, item) => TileWidget(
           item,
           showOutline: true,
-          showInvalidBadge: !widget.readOnly &&
+          showInvalidBadge:
               TilePlacement.hasInvalidPlacement(_castleTiles, index),
         ),
         feedback: (context, index, item) => TileWidget(
@@ -1524,26 +1542,51 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
 
   Widget _getBottomButtonRow() => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          children: [
-            _getSaveAndCloseButton(),
-            Flexible(
-              child: Container(),
-            ),
-            _getCancelButton(),
-          ],
-        ),
+        child: _evenlySpacedButtonRow([
+          _getSaveAndCloseButton(),
+          _getCancelButton(),
+        ]),
       );
 
-  Widget _getBottomSheet() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _getAnimatedSelectionPanel(),
-        ButtonPadding(),
-        _getBottomButtonRow(),
-        ButtonPadding(),
-      ],
+  Widget _getSaveCancelBar() => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ButtonPadding(),
+          _getBottomButtonRow(),
+          ButtonPadding(),
+        ],
+      );
+
+  Widget _getBottomSheet(double sheetMax) {
+    return AnimatedBuilder(
+      animation: _panelController,
+      builder: (context, _) {
+        final t = _panelController.value;
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (t > 0)
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: sheetMax),
+                child: ClipRect(
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    heightFactor: t,
+                    child: _getAnimatedSelectionPanel(),
+                  ),
+                ),
+              ),
+            if (t < 1)
+              Opacity(
+                opacity: 1 - t,
+                child: IgnorePointer(
+                  ignoring: t > 0,
+                  child: _getSaveCancelBar(),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -1633,18 +1676,32 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
         ],
       ),
       body: BackgroundContainer(
-        child: Column(
-          children: [
-            _getTokenStrip(),
-            Expanded(
-              child: _getBody(),
-            ),
-            if (!readOnly)
-              Align(
-                alignment: FractionalOffset.bottomCenter,
-                child: _getBottomSheet(),
-              ),
-          ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Keyboard shrinks this body; keep a sliver of the map visible
+            // and let the sheet scroll instead of overflowing.
+            const minMapHeight = 96.0;
+            final sheetMax = max(180.0, constraints.maxHeight - minMapHeight);
+            return Column(
+              children: [
+                Expanded(
+                  child: Column(
+                    children: [
+                      _getTokenStrip(),
+                      Expanded(
+                        child: _getBody(),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!readOnly)
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: sheetMax),
+                    child: _getBottomSheet(sheetMax),
+                  ),
+              ],
+            );
+          },
         ),
       ),
     );

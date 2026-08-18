@@ -7,6 +7,7 @@ import 'package:btcc/src/state/tf_store.dart';
 import 'package:btcc/src/tflite/tile_selection_builder.dart';
 import 'package:btcc/src/tflite/tile_selection_geom.dart';
 import 'package:btcc/src/tflite/tflite_helper.dart';
+import 'package:btcc/src/tflite/windowed_detect.dart';
 import 'package:btcc/src/utils/castle_frame_crop.dart';
 import 'package:btcc/src/utils/log.dart';
 import 'package:btcc/src/utils/navigation_helper.dart';
@@ -49,12 +50,18 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
   bool _busy = false;
   String? _error;
   bool _didInitialFit = false;
+  bool _markFitReady = false;
   Size? _lastViewport;
   Size? _layoutSize;
   double _viewerMinScale = 0.01;
 
   ui.Rect? _throneRect;
   ui.Rect? _boundsRect;
+  Matrix4? _throneTransformSnapshot;
+  Matrix4? _boundsTransformSnapshot;
+  double? _throneViewerMinScaleSnapshot;
+  double? _boundsViewerMinScaleSnapshot;
+  bool _restoreViewOnNextFrame = false;
   final Set<GridCell> _marked = {
     const GridCell(0, 0),
     const GridCell(1, 0),
@@ -67,13 +74,29 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
   void initState() {
     super.initState();
     OrientationHelper.lockPortrait();
+    _transform.addListener(_onTransformChanged);
     _loadSize();
   }
 
   @override
   void dispose() {
+    _transform.removeListener(_onTransformChanged);
     _transform.dispose();
     super.dispose();
+  }
+
+  void _onTransformChanged() {
+    if (_step == _TileSelectionStep.mark && mounted) {
+      setState(() {});
+    }
+  }
+
+  void _scheduleFit(VoidCallback fit) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      fit();
+      setState(() {});
+    });
   }
 
   Future<void> _loadSize() async {
@@ -98,20 +121,32 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
         _ => TileSelectionFrameAspect.castleBounds(portrait: _portraitFrame),
       };
 
-  String get _stepTitle => switch (_step) {
-        _TileSelectionStep.throne => 'Align throne',
-        _TileSelectionStep.bounds => 'Fit full castle',
-        _TileSelectionStep.mark => 'Mark tiles',
-        _TileSelectionStep.process => 'Classifying',
+  static const _wizardStepLabels = [
+    'Align throne',
+    'Fit castle',
+    'Mark tiles',
+  ];
+
+  int get _wizardStepIndex => switch (_step) {
+        _TileSelectionStep.throne => 0,
+        _TileSelectionStep.bounds => 1,
+        _TileSelectionStep.mark => 2,
+        _TileSelectionStep.process => 2,
       };
+
+  List<String> get _breadcrumbSegments => [
+        widget.gameTitle ?? 'Game',
+        ..._wizardStepLabels.sublist(0, _wizardStepIndex + 1),
+      ];
 
   String get _stepHint => switch (_step) {
         _TileSelectionStep.throne =>
           'Fit the throne room (2 tiles wide) in the box',
         _TileSelectionStep.bounds =>
-          'Include the whole castle — towers, wings & basement',
+          'Include the whole castle, bonus cards, and royal attendants '
+              '(on the throne or beside it)',
         _TileSelectionStep.mark =>
-          'Tap each room tile on the photo, starting from the throne',
+          'Review auto-marked tiles — tap to add or remove rooms',
         _TileSelectionStep.process => 'Identifying marked tiles…',
       };
 
@@ -135,7 +170,88 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
     );
   }
 
-  void _fitIfNeeded(Size viewport, Rect frame) {
+  void _snapshotThroneView() {
+    _throneTransformSnapshot = Matrix4.copy(_transform.value);
+    _throneViewerMinScaleSnapshot = _viewerMinScale;
+  }
+
+  void _snapshotBoundsView() {
+    _boundsTransformSnapshot = Matrix4.copy(_transform.value);
+    _boundsViewerMinScaleSnapshot = _viewerMinScale;
+  }
+
+  void _scheduleRestoreView({
+    required Matrix4? transformSnapshot,
+    required double? minScaleSnapshot,
+  }) {
+    if (transformSnapshot == null) {
+      _restoreViewOnNextFrame = false;
+      _didInitialFit = false;
+      _viewerMinScale = 0.01;
+      return;
+    }
+    _restoreViewOnNextFrame = true;
+    _didInitialFit = true;
+    _scheduleFit(() {
+      if (!mounted || !_restoreViewOnNextFrame) return;
+      _transform.value = Matrix4.copy(transformSnapshot);
+      _viewerMinScale = minScaleSnapshot ?? 0.01;
+      _restoreViewOnNextFrame = false;
+    });
+  }
+
+  void _goToStep(_TileSelectionStep target) {
+    if (_busy) return;
+
+    final targetIndex = switch (target) {
+      _TileSelectionStep.throne => 0,
+      _TileSelectionStep.bounds => 1,
+      _TileSelectionStep.mark => 2,
+      _TileSelectionStep.process => 2,
+    };
+    if (targetIndex >= _wizardStepIndex) return;
+
+    setState(() {
+      _error = null;
+      _markFitReady = false;
+      _step = target;
+
+      switch (target) {
+        case _TileSelectionStep.throne:
+          _boundsRect = null;
+          _boundsTransformSnapshot = null;
+          _boundsViewerMinScaleSnapshot = null;
+          _scheduleRestoreView(
+            transformSnapshot: _throneTransformSnapshot,
+            minScaleSnapshot: _throneViewerMinScaleSnapshot,
+          );
+        case _TileSelectionStep.bounds:
+          _scheduleRestoreView(
+            transformSnapshot: _boundsTransformSnapshot,
+            minScaleSnapshot: _boundsViewerMinScaleSnapshot,
+          );
+        case _TileSelectionStep.mark:
+        case _TileSelectionStep.process:
+          break;
+      }
+    });
+  }
+
+  void _onBreadcrumbTap(int index) {
+    if (index == 0) {
+      Navigator.of(context).pop();
+      return;
+    }
+    final target = switch (index) {
+      1 => _TileSelectionStep.throne,
+      2 => _TileSelectionStep.bounds,
+      3 => _TileSelectionStep.mark,
+      _ => null,
+    };
+    if (target != null) _goToStep(target);
+  }
+
+  void _applyFrameFit(Size viewport, Rect frame) {
     final imageSize = _imageSize;
     if (imageSize == null) return;
     final layout = CastleFrameGeom.displayLayoutSize(imageSize, viewport);
@@ -176,7 +292,19 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
     );
   }
 
-  void _fitMarkStepIfNeeded(
+  void _fitIfNeeded(Size viewport, Rect frame) {
+    final imageSize = _imageSize;
+    if (imageSize == null) return;
+    final layout = CastleFrameGeom.displayLayoutSize(imageSize, viewport);
+    if (_didInitialFit &&
+        _lastViewport == viewport &&
+        _layoutSize == layout) {
+      return;
+    }
+    _scheduleFit(() => _applyFrameFit(viewport, frame));
+  }
+
+  void _applyMarkStepFit(
     Size viewport,
     Size layout,
     TileSelectionCalibration cal,
@@ -184,11 +312,13 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
     if (_didInitialFit &&
         _lastViewport == viewport &&
         _layoutSize == layout) {
+      _markFitReady = true;
       return;
     }
     _lastViewport = viewport;
     _layoutSize = layout;
     _didInitialFit = true;
+    _markFitReady = true;
     final imageSize = _imageSize!;
     final b = cal.boundsRect;
     final toLayout = CastleFrameGeom.layoutToImageScale(imageSize, layout);
@@ -214,32 +344,103 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
     );
   }
 
-  ui.Rect _imageCropFromFrame() {
+  void _fitMarkStepIfNeeded(
+    Size viewport,
+    Size layout,
+    TileSelectionCalibration cal,
+  ) {
+    if (_didInitialFit &&
+        _lastViewport == viewport &&
+        _layoutSize == layout &&
+        _markFitReady) {
+      return;
+    }
+    _markFitReady = false;
+    _scheduleFit(() => _applyMarkStepFit(viewport, layout, cal));
+  }
+
+  ui.Rect _imageCropFromFrame({
+    required Rect frame,
+    required Size viewport,
+    bool forThroneCalibration = false,
+  }) {
     final imageSize = _imageSize!;
-    final frame = _frame!;
-    final layout = _layoutSize ??
-        CastleFrameGeom.displayLayoutSize(
-          imageSize,
-          _lastViewport ?? Size(frame.width, frame.height),
-        );
+    final layout = CastleFrameGeom.displayLayoutSize(imageSize, viewport);
     final crop = CastleFrameGeom.imageCropRect(
       frame: frame,
       transform: _transform.value,
       imageWidth: imageSize.width.round(),
       imageHeight: imageSize.height.round(),
       layoutSize: layout,
+      controller: _transform,
+      forThroneCalibration: forThroneCalibration,
     );
     return ui.Rect.fromLTRB(crop.left, crop.top, crop.right, crop.bottom);
   }
 
+  Future<void> _autoseedFromDetections(ui.Rect bounds) async {
+    final throne = _throneRect;
+    if (throne == null) return;
+    try {
+      final store = Provider.of<TfStore>(context, listen: false);
+      await store.prepareForScoring();
+      final expectedSize = await decodeImagePixelSize(widget.imagePath);
+      final decoded = await decodeOrientedImage(
+        widget.imagePath,
+        expectedSize: expectedSize,
+      );
+      if (decoded.width == 0 || decoded.height == 0) return;
+
+      final cal = TileSelectionCalibration(
+        imagePath: widget.imagePath,
+        throneRect: throne,
+        boundsRect: bounds,
+      );
+      final detectRect = Rect.fromLTRB(
+        bounds.left.clamp(0, decoded.width.toDouble()),
+        bounds.top.clamp(0, decoded.height.toDouble()),
+        bounds.right.clamp(0, decoded.width.toDouble()),
+        bounds.bottom.clamp(0, decoded.height.toDouble()),
+      );
+      final guesses = await WindowedDetect.detectCastleWindows(
+        store: store,
+        decoded: decoded,
+        bounds: detectRect,
+        tileW: cal.tileWidth,
+        tileH: cal.tileHeight,
+      );
+      final seeded = WindowedDetect.seedMarkedCells(
+        guesses: guesses,
+        calibration: cal,
+        alwaysMarked: _marked,
+      );
+      _marked
+        ..clear()
+        ..addAll(seeded);
+      log('autoseed marked ${_marked.length} cells from ${guesses.length} detections');
+    } catch (ex, st) {
+      log('autoseed failed: $ex');
+      log(st);
+    }
+  }
+
   Future<void> _onContinue() async {
-    if (_busy || _imageSize == null || _frame == null) return;
+    if (_busy || _imageSize == null || _frame == null || _lastViewport == null) {
+      return;
+    }
 
     if (_step == _TileSelectionStep.throne) {
+      _snapshotThroneView();
       setState(() {
-        _throneRect = _imageCropFromFrame();
+        _throneRect = _imageCropFromFrame(
+          frame: _frame!,
+          viewport: _lastViewport!,
+          forThroneCalibration: true,
+        );
         _step = _TileSelectionStep.bounds;
         _didInitialFit = false;
+        _markFitReady = false;
+        _restoreViewOnNextFrame = false;
         _viewerMinScale = 0.01;
         _error = null;
       });
@@ -247,12 +448,25 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
     }
 
     if (_step == _TileSelectionStep.bounds) {
+      _snapshotBoundsView();
+      final bounds = _imageCropFromFrame(
+        frame: _frame!,
+        viewport: _lastViewport!,
+      );
       setState(() {
-        _boundsRect = _imageCropFromFrame();
-        _step = _TileSelectionStep.mark;
-        _didInitialFit = false;
-        _viewerMinScale = 0.01;
+        _busy = true;
         _error = null;
+      });
+      await _autoseedFromDetections(bounds);
+      if (!mounted) return;
+      setState(() {
+        _boundsRect = bounds;
+        _step = _TileSelectionStep.mark;
+        _busy = false;
+        _didInitialFit = false;
+        _markFitReady = false;
+        _restoreViewOnNextFrame = false;
+        _viewerMinScale = 0.01;
       });
       return;
     }
@@ -286,7 +500,7 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
         throneRect: throne,
         boundsRect: bounds,
       );
-      final grid = await TileSelectionBuilder.buildCastle(
+      final result = await TileSelectionBuilder.buildCastleWithInfo(
         calibration: calibration,
         marked: _marked,
         store: store,
@@ -298,6 +512,7 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
           });
         },
       );
+      final grid = result.grid;
 
       if (!mounted) return;
       if (!grid.items.any((t) => t.tileType == TileType.ThroneRoom)) {
@@ -318,6 +533,7 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
         numPicturesTaken: widget.numPicturesTaken,
         gameTitle: widget.gameTitle,
         expectedRoomTileCount: widget.expectedRoomTileCount,
+        cellGuesses: result.cellGuesses,
       );
     } catch (ex, st) {
       log(ex);
@@ -343,9 +559,9 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
           imageSize,
           _lastViewport ?? const Size(400, 600),
         );
-    final imagePoint = CastleFrameGeom.viewportToImage(
+    final imagePoint = CastleFrameGeom.viewportToImageFromController(
       viewportPoint,
-      _transform.value,
+      _transform,
       imageSize: imageSize,
       layoutSize: layout,
     );
@@ -373,22 +589,13 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
   }
 
   void _back() {
-    if (_step == _TileSelectionStep.bounds) {
-      setState(() {
-        _step = _TileSelectionStep.throne;
-        _didInitialFit = false;
-        _viewerMinScale = 0.01;
-        _error = null;
-      });
-    } else if (_step == _TileSelectionStep.mark) {
-      setState(() {
-        _step = _TileSelectionStep.bounds;
-        _didInitialFit = false;
-        _viewerMinScale = 0.01;
-        _error = null;
-      });
-    } else {
-      Navigator.of(context).pop();
+    switch (_step) {
+      case _TileSelectionStep.bounds:
+        _goToStep(_TileSelectionStep.throne);
+      case _TileSelectionStep.mark:
+        _goToStep(_TileSelectionStep.bounds);
+      default:
+        Navigator.of(context).pop();
     }
   }
 
@@ -409,10 +616,8 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
             OrientationHelper.lockPortrait();
             NavigationHelper.popToHome(context);
           },
-          segments: [widget.gameTitle ?? 'Game', _stepTitle],
-          onSegmentTap: (index) {
-            if (index == 0) Navigator.of(context).pop();
-          },
+          segments: _breadcrumbSegments,
+          onSegmentTap: _busy ? null : _onBreadcrumbTap,
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -448,8 +653,9 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
                           imageSize,
                           viewport,
                         );
+                        _lastViewport = viewport;
                         _layoutSize = layout;
-                        if (!_didInitialFit) {
+                        if (!_didInitialFit && !_restoreViewOnNextFrame) {
                           _fitIfNeeded(viewport, frame);
                         }
 
@@ -505,20 +711,16 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
                             )
                           : null;
 
-                      if (isMark && cal != null) {
-                        final layout = CastleFrameGeom.displayLayoutSize(
-                          imageSize,
-                          viewport,
-                        );
-                        if (!_didInitialFit) {
-                          _fitMarkStepIfNeeded(viewport, layout, cal);
-                        }
-                      }
-
                       final markLayout = CastleFrameGeom.displayLayoutSize(
                         imageSize,
                         viewport,
                       );
+                      _lastViewport = viewport;
+                      _layoutSize = markLayout;
+
+                      if (isMark && cal != null && !_didInitialFit) {
+                        _fitMarkStepIfNeeded(viewport, markLayout, cal);
+                      }
 
                       return Stack(
                         fit: StackFit.expand,
@@ -538,7 +740,7 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
                               fit: BoxFit.fill,
                             ),
                           ),
-                          if (cal != null && isMark)
+                          if (cal != null && isMark && _markFitReady)
                             GestureDetector(
                               behavior: HitTestBehavior.translucent,
                               onTapUp: (d) => _onTapMark(d.localPosition),
@@ -624,6 +826,21 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
                                 textAlign: TextAlign.center,
                               ),
                             ),
+                          if (_step == _TileSelectionStep.mark)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.white,
+                                  side: const BorderSide(color: Colors.white54),
+                                ),
+                                onPressed: _busy
+                                    ? null
+                                    : () => _goToStep(_TileSelectionStep.bounds),
+                                icon: const Icon(Icons.crop_free),
+                                label: const Text('Adjust framing'),
+                              ),
+                            ),
                           if (_step == _TileSelectionStep.bounds)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 8),
@@ -637,6 +854,8 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
                                     : () => setState(() {
                                           _portraitFrame = !_portraitFrame;
                                           _didInitialFit = false;
+                                          _markFitReady = false;
+                                          _restoreViewOnNextFrame = false;
                                         }),
                                 icon: Icon(
                                   _portraitFrame
@@ -714,13 +933,13 @@ class _GridOverlayPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     for (final cell in calibration.cellsInBounds()) {
       final ir = calibration.cellRect(cell);
-      final tl = MatrixUtils.transformPoint(
-        transform,
+      final tl = CastleFrameGeom.layoutToViewport(
         Offset(ir.left * imageToLayoutScale, ir.top * imageToLayoutScale),
-      );
-      final br = MatrixUtils.transformPoint(
         transform,
+      );
+      final br = CastleFrameGeom.layoutToViewport(
         Offset(ir.right * imageToLayoutScale, ir.bottom * imageToLayoutScale),
+        transform,
       );
       final rect = Rect.fromPoints(tl, br);
       final isMarked = marked.contains(cell);
@@ -748,5 +967,13 @@ class _GridOverlayPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _GridOverlayPainter old) =>
-      old.marked != marked || old.transform != transform;
+      old.marked != marked ||
+      ! _matricesNearEqual(old.transform, transform);
+
+  static bool _matricesNearEqual(Matrix4 a, Matrix4 b) {
+    for (var i = 0; i < 16; i++) {
+      if ((a.storage[i] - b.storage[i]).abs() > 1e-9) return false;
+    }
+    return true;
+  }
 }

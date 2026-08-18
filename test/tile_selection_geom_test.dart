@@ -69,5 +69,21 @@ void main() {
       expect(r.width, greaterThan(cal.tileWidth * 6));
       expect(r.height, greaterThan(cal.tileHeight * 6));
     });
+
+    test('scoringContextRect is about 8 tiles on a side', () {
+      const cal = TileSelectionCalibration(
+        imagePath: 'x.jpg',
+        throneRect: Rect.fromLTWH(400, 400, 200, 80),
+        boundsRect: Rect.fromLTWH(0, 0, 2000, 1600),
+      );
+      final r = cal.scoringContextRect(
+        const GridCell(0, 0),
+        imageW: 2000,
+        imageH: 1600,
+      );
+      expect(r.width, closeTo(cal.tileWidth * 8, 2));
+      expect(r.height, closeTo(cal.tileWidth * 8, 2));
+      expect(r.contains(cal.cellCenter(const GridCell(0, 0))), isTrue);
+    });
   });
 }

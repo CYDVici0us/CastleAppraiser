@@ -10,10 +10,10 @@ import 'package:test/test.dart';
 
 TfliteProcessedGuess guess({
   required TileLabels label,
-  required double xMin,
-  required double xMax,
-  required double yMin,
-  required double yMax,
+  double xMin = 0,
+  double xMax = 10,
+  double yMin = 0,
+  double yMax = 10,
   double score = 0.9,
 }) {
   return TfliteProcessedGuess(
@@ -228,6 +228,29 @@ void main() {
       expect(a.calculateOverlap(b), greaterThan(0.45));
       final kept = TfliteHelper.classAwareNms([a, b], sameClassIou: 0.45);
       expect(kept.length, 2);
+    });
+
+    test('suppresses same-label boxes with low IoU but nearby centers', () {
+      final a = guess(
+        label: TileLabels.KITCHEN,
+        xMin: 0,
+        xMax: 100,
+        yMin: 0,
+        yMax: 80,
+        score: 0.95,
+      );
+      final b = guess(
+        label: TileLabels.KITCHEN,
+        xMin: 40,
+        xMax: 140,
+        yMin: 0,
+        yMax: 80,
+        score: 0.7,
+      );
+      expect(a.calculateOverlap(b), lessThan(0.45));
+      final kept = TfliteHelper.suppressNearbySameLabel([a, b]);
+      expect(kept.length, 1);
+      expect(kept.first.score, 0.95);
     });
 
     test('suppresses duplicate same-label boxes', () {
@@ -557,6 +580,50 @@ void main() {
   });
 
   group('throne salvage', () {
+    test('classAwareNms keeps attendant overlapping a neighboring room', () {
+      final room = guess(
+        label: TileLabels.KITCHEN,
+        xMin: 100,
+        xMax: 200,
+        yMin: 100,
+        yMax: 200,
+        score: 0.92,
+      );
+      final attendant = guess(
+        label: TileLabels.RAM,
+        xMin: 170,
+        xMax: 240,
+        yMin: 110,
+        yMax: 180,
+        score: 0.8,
+      );
+      expect(room.calculateOverlap(attendant), greaterThan(0.05));
+      final kept = TfliteHelper.classAwareNms([room, attendant]);
+      expect(kept.any((g) => g.label == TileLabels.KITCHEN), isTrue);
+      expect(kept.any((g) => g.label == TileLabels.RAM), isTrue);
+    });
+
+    test('classAwareNms keeps bonus card overlapping a side room', () {
+      final room = guess(
+        label: TileLabels.WAITING_ROOM,
+        xMin: 50,
+        xMax: 150,
+        yMin: 80,
+        yMax: 180,
+        score: 0.9,
+      );
+      final bonus = guess(
+        label: TileLabels.BCREGULAR,
+        xMin: 10,
+        xMax: 90,
+        yMin: 40,
+        yMax: 200,
+        score: 0.85,
+      );
+      final kept = TfliteHelper.classAwareNms([room, bonus]);
+      expect(kept.any((g) => g.label == TileLabels.WAITING_ROOM), isTrue);
+      expect(kept.any((g) => g.label == TileLabels.BCREGULAR), isTrue);
+    });
     test('classAwareNms keeps throne when attendant overlaps it', () {
       final throne = guess(
         label: TileLabels.TRCD,
@@ -602,6 +669,138 @@ void main() {
       expect(inferred, isNotNull);
       expect(inferred!.label, TileLabels.TRCD);
       expect(inferred.xMax - inferred.xMin, closeTo(200, 1));
+    });
+
+    test('convertGuessesToCastle keeps side attendant and bonus card', () {
+      final grid = TfliteHelper.convertGuessesToCastle([
+        guess(
+          label: TileLabels.TRCD,
+          xMin: 200,
+          xMax: 400,
+          yMin: 200,
+          yMax: 300,
+          score: 0.95,
+        ),
+        guess(
+          label: TileLabels.KITCHEN,
+          xMin: 100,
+          xMax: 200,
+          yMin: 200,
+          yMax: 300,
+          score: 0.9,
+        ),
+        guess(
+          label: TileLabels.RAM,
+          xMin: 430,
+          xMax: 500,
+          yMin: 210,
+          yMax: 280,
+          score: 0.88,
+        ),
+        guess(
+          label: TileLabels.RAT,
+          xMin: 220,
+          xMax: 280,
+          yMin: 205,
+          yMax: 265,
+          score: 0.87,
+        ),
+        guess(
+          label: TileLabels.BCREGULAR,
+          xMin: 10,
+          xMax: 80,
+          yMin: 160,
+          yMax: 310,
+          score: 0.91,
+        ),
+      ]);
+      expect(
+        grid.items.any((t) => t.tileType == TileType.RoyalAttendant),
+        isTrue,
+      );
+      expect(grid.items.where((t) => t.isRoyalAttendant()).length, 2);
+      expect(grid.items.any((t) => t.isBonusCard()), isTrue);
+    });
+
+    test('collectTokenTiles keeps attendants not overlapping the throne', () {
+      final tokens = TfliteHelper.collectTokenTiles([
+        guess(
+          label: TileLabels.RAM,
+          xMin: 500,
+          xMax: 560,
+          yMin: 200,
+          yMax: 260,
+          score: 0.9,
+        ),
+        guess(
+          label: TileLabels.BCREGULAR,
+          xMin: 10,
+          xMax: 80,
+          yMin: 100,
+          yMax: 250,
+          score: 0.85,
+        ),
+        guess(
+          label: TileLabels.KITCHEN,
+          xMin: 100,
+          xMax: 200,
+          yMin: 100,
+          yMax: 200,
+          score: 0.8,
+        ),
+      ]);
+      expect(tokens.where((t) => t.isRoyalAttendant()).length, 1);
+      expect(tokens.where((t) => t.isBonusCard()).length, 1);
+    });
+
+    test('collectTokenTiles drops bonus cards inside the room cluster', () {
+      final tokens = TfliteHelper.collectTokenTiles([
+        guess(
+          label: TileLabels.KITCHEN,
+          xMin: 100,
+          xMax: 200,
+          yMin: 100,
+          yMax: 200,
+          score: 0.9,
+        ),
+        guess(
+          label: TileLabels.TRCD,
+          xMin: 200,
+          xMax: 400,
+          yMin: 100,
+          yMax: 200,
+          score: 0.95,
+        ),
+        guess(
+          label: TileLabels.GREAT_HALL,
+          xMin: 400,
+          xMax: 500,
+          yMin: 100,
+          yMax: 200,
+          score: 0.88,
+        ),
+        guess(
+          label: TileLabels.BCREGULAR,
+          xMin: 210,
+          xMax: 280,
+          yMin: 110,
+          yMax: 190,
+          score: 0.7,
+        ),
+        guess(
+          label: TileLabels.BCFOOD,
+          xMin: 10,
+          xMax: 80,
+          yMin: 80,
+          yMax: 220,
+          score: 0.85,
+        ),
+      ]);
+      expect(tokens.where((t) => t.isBonusCard()).length, 1);
+      expect(
+        tokens.singleWhere((t) => t.isBonusCard()).id,
+        TileId.BCPerFood,
+      );
     });
 
     test('convertGuessesToCastle opens with inferred throne', () {
@@ -673,7 +872,7 @@ void main() {
         guess(label: TileLabels.KITCHEN, score: 0.9),
         guess(label: TileLabels.TRCD, score: 0.95),
         guess(label: TileLabels.RAT, score: 0.8),
-        guess(label: TileLabels.BRC, score: 0.7),
+        guess(label: TileLabels.BCREGULAR, score: 0.7),
       ];
       expect(TfliteHelper.countRoomDetections(guesses), 1);
     });

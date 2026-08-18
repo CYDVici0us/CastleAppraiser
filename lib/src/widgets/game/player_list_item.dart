@@ -58,76 +58,79 @@ class PlayerListItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final arrow = _primaryArrow();
 
+    final row = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        children: [
+          const Icon(Icons.person, color: Colors.white, size: 22),
+          const SizedBox(width: 8),
+          Expanded(
+            child: AutoSizeText(
+              name,
+              maxLines: 1,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          if (arrow != null) ...[
+            arrow,
+            const SizedBox(width: 6),
+          ],
+          if (score != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Text(
+                '$score',
+                style: const TextStyle(color: Colors.white, fontSize: 16),
+              ),
+            ),
+          if (isWinner)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'Winner',
+                style: TextStyle(
+                  color: Colors.green.shade900,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          if (isBench && onDelete != null)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.white),
+              tooltip: 'Delete player',
+              visualDensity: VisualDensity.compact,
+              onPressed: onDelete,
+            ),
+          if (dragHandle != null) ...[
+            const SizedBox(width: 4),
+            dragHandle!,
+          ],
+        ],
+      ),
+    );
+
     return Material(
       elevation: 2,
       borderRadius: BorderRadius.circular(12),
       color: isWinner
           ? Colors.green.shade700
           : (isBench ? Colors.blueGrey.shade700 : Colors.indigo.shade600),
-      child: InkWell(
-        onTap: onRename,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            children: [
-              const Icon(Icons.person, color: Colors.white, size: 22),
-              const SizedBox(width: 8),
-              Expanded(
-                child: AutoSizeText(
-                  name,
-                  maxLines: 1,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              if (arrow != null) ...[
-                arrow,
-                const SizedBox(width: 6),
-              ],
-              if (score != null)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: Text(
-                    '$score',
-                    style: const TextStyle(color: Colors.white, fontSize: 16),
-                  ),
-                ),
-              if (isWinner)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    'Winner',
-                    style: TextStyle(
-                      color: Colors.green.shade900,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              if (isBench && onDelete != null)
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.white),
-                  tooltip: 'Delete player',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: onDelete,
-                ),
-              if (dragHandle != null) ...[
-                const SizedBox(width: 4),
-                dragHandle!,
-              ],
-            ],
-          ),
-        ),
-      ),
+      child: onRename != null
+          ? InkWell(
+              onTap: onRename,
+              borderRadius: BorderRadius.circular(12),
+              child: row,
+            )
+          : row,
     );
   }
 }

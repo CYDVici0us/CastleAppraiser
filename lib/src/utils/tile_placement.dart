@@ -1,5 +1,6 @@
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/utils/grid_expander.dart';
+import 'package:btcc/src/utils/token_tile_grid.dart';
 
 /// Vertical position relative to the throne-room (ground) row.
 enum CastleLevel {
@@ -18,6 +19,8 @@ enum PlacementInvalidReason {
   wrongTypeForLevel,
   /// Empty hole under an upper-floor room or through a run of rooms.
   structuralGap,
+  /// Bonus / royal attendant placed among castle rooms instead of the token strip.
+  tokenAmongRooms,
 }
 
 /// Placement rules for castle grid editing.
@@ -238,8 +241,13 @@ class TilePlacement {
     if (tile.tileType == TileType.Placeholder) {
       return const [];
     }
-    // Visual-only scoring tokens (bonus / royal attendant row).
-    if (_isVisualToken(tile)) return const [];
+    // Bonus / attendants belong on the token strip. A token stuffed into a
+    // castle hole is an unidentified room, not a real bonus/attendant.
+    if (_isVisualToken(tile)) {
+      return isGapFillingToken(grid, index)
+          ? const [PlacementInvalidReason.tokenAmongRooms]
+          : const [];
+    }
 
     if (tile.isEmpty()) {
       return isInvalidStructuralGap(grid, index)
@@ -313,15 +321,28 @@ class TilePlacement {
       bool occ(int nx, int ny) {
         if (nx < 0 || ny < 0 || nx >= w || ny >= grid.height) return false;
         final t = grid.items[nx + ny * w];
-        return !t.isEmpty() &&
-            t.tileType != TileType.Placeholder &&
-            !_isVisualToken(t);
+        // Include placeholder — it anchors the throne on the ground row.
+        return !t.isEmpty() && !_isVisualToken(t);
       }
 
       if (occ(x - 1, y) && occ(x + 1, y)) return true;
     }
 
     return false;
+  }
+
+  /// Bonus/attendant sitting in a castle hole (unidentified room), not a
+  /// real token on the strip or beside the castle.
+  static bool isGapFillingToken(GridList<Tile> grid, int index) {
+    if (index < 0 || index >= grid.items.length) return false;
+    if (!_isVisualToken(grid.items[index])) return false;
+    if (TokenTileGrid.isTokenOnLeadingStrip(grid, index)) return false;
+    final copy = GridList<Tile>(
+      grid.width,
+      List<Tile>.from(grid.items),
+    );
+    copy.items[index] = Empty();
+    return isInvalidStructuralGap(copy, index);
   }
 
   static bool hasInvalidPlacement(GridList<Tile> grid, int index) =>
@@ -344,6 +365,8 @@ class TilePlacement {
         return 'Wrong room type for this floor';
       case PlacementInvalidReason.structuralGap:
         return 'Invalid gap — fill or close this hole';
+      case PlacementInvalidReason.tokenAmongRooms:
+        return 'Unidentified room — not a bonus card or attendant';
     }
   }
 

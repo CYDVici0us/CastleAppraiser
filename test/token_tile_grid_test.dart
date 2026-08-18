@@ -147,12 +147,8 @@ void main() {
       expect(replacingBonus.any((t) => t.id == TileId.BCPerActivity), isFalse);
     });
 
-    test('extract closes vertical gaps toward ground', () {
-      // Bonus between rooms above throne — after extract, kitchen falls down.
-      // width 3:
-      // Kitchen
-      // Bonus
-      // Throne Placeholder _
+    test('extract leaves vertical gaps when token sat among rooms', () {
+      // Bonus between rooms above throne — kitchen stays above the gap.
       final grid = GridList<Tile>(3, [
         Kitchen(), Empty(), Empty(),
         BCPerFood(), Empty(), Empty(),
@@ -164,15 +160,13 @@ void main() {
         getEmpty: () => Empty(),
       );
 
-      expect(result.tokens.single.isBonusCard(), isTrue);
-      // Kitchen should pack just above throne (row 1)
-      expect(result.structural.items[3].id, TileId.Kitchen);
-      expect(result.structural.items[0].isEmpty(), isTrue);
+      expect(result.tokens, isEmpty);
+      expect(result.structural.items[0].id, TileId.Kitchen);
+      expect(result.structural.items[3].isEmpty(), isTrue);
       expect(result.structural.items[6].tileType, TileType.ThroneRoom);
     });
 
-    test('extract closes below-ground gaps upward', () {
-      // Throne on row 0, bonus then dungeon below — dungeon rises.
+    test('extract leaves below-ground gaps when token sat among rooms', () {
       final grid = GridList<Tile>(3, [
         ThroneRoomPerCorridorFood(), Placeholder(), Empty(),
         BCPerFood(), Empty(), Empty(),
@@ -184,13 +178,12 @@ void main() {
         getEmpty: () => Empty(),
       );
 
-      expect(result.tokens.single.isBonusCard(), isTrue);
-      expect(result.structural.items[3].id, TileId.Dungeon);
-      expect(result.structural.items[6].isEmpty(), isTrue);
+      expect(result.tokens, isEmpty);
+      expect(result.structural.items[6].id, TileId.Dungeon);
+      expect(result.structural.items[3].isEmpty(), isTrue);
     });
 
-    test('extract closes ground-row gap beside throne', () {
-      // Room | Bonus | Throne | PH  on one row — room slides next to throne.
+    test('extract leaves ground-row gap beside throne', () {
       final grid = GridList<Tile>(4, [
         Empty(), Empty(), Empty(), Empty(),
         Kitchen(), BCPerFood(), ThroneRoomPerCorridorFood(), Placeholder(),
@@ -202,10 +195,9 @@ void main() {
         getEmpty: () => Empty(),
       );
 
-      expect(result.tokens.single.isBonusCard(), isTrue);
-      // Kitchen packs to throneX-1 (index 5)
-      expect(result.structural.items[5].id, TileId.Kitchen);
-      expect(result.structural.items[4].isEmpty(), isTrue);
+      expect(result.tokens, isEmpty);
+      expect(result.structural.items[4].id, TileId.Kitchen);
+      expect(result.structural.items[5].isEmpty(), isTrue);
       expect(result.structural.items[6].tileType, TileType.ThroneRoom);
     });
 
@@ -227,8 +219,8 @@ void main() {
       expect(result.structural.items[8].tileType, TileType.ThroneRoom);
     });
 
-    test('extract closes ground-row gap to the right of placeholder', () {
-      // Throne | PH | Bonus | Hall — hall slides next to placeholder.
+    test('extract leaves ground-row gap to the right of placeholder', () {
+      // Throne | PH | Bonus | Hall — gap stays after bonus is pulled out.
       final grid = GridList<Tile>(4, [
         Empty(), Empty(), Empty(), Empty(),
         ThroneRoomPerCorridorFood(), Placeholder(), BCPerFood(), GreatHall(),
@@ -240,8 +232,24 @@ void main() {
         getEmpty: () => Empty(),
       );
 
+      expect(result.tokens, isEmpty);
+      expect(result.structural.items[6].isEmpty(), isTrue);
+      expect(result.structural.items[7].id, TileId.GreatHall);
+    });
+
+    test('extract still collects a side-column bonus card', () {
+      final grid = GridList<Tile>(4, [
+        Empty(), Empty(), Empty(), Empty(),
+        Empty(), ThroneRoomPerCorridorFood(), Placeholder(), BCPerFood(),
+        Empty(), Empty(), Empty(), Empty(),
+      ]);
+
+      final result = TokenTileGrid.extractTokenTiles(
+        grid,
+        getEmpty: () => Empty(),
+      );
+
       expect(result.tokens.single.isBonusCard(), isTrue);
-      expect(result.structural.items[6].id, TileId.GreatHall);
       expect(result.structural.items[7].isEmpty(), isTrue);
     });
 

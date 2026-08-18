@@ -241,12 +241,13 @@ class TfStore extends ChangeNotifier {
     required List<TfliteProcessedGuess> seed,
     required int rotations,
   }) async {
-    // Include attendants in the anchor box — they mark throne height/center
-    // when room detections alone miss the extremes.
+    // Include bonus cards and attendants in the anchor box — they mark
+    // tokens beside the castle as well as attendants on the throne.
     final anchors = seed.where((g) {
       if (!TfliteHelper.isNonTile(g)) return true;
       final tile = TfliteHelper.getCorrectTile(g, const <Tile>[]);
-      return tile.tileType == TileType.RoyalAttendant;
+      return tile.tileType == TileType.RoyalAttendant ||
+          tile.tileType == TileType.BonusCard;
     }).toList();
     if (anchors.isEmpty) return seed;
 
@@ -520,6 +521,7 @@ class TfStore extends ChangeNotifier {
       var bestHasThrone = false;
       var bestQuality = double.negativeInfinity;
       var throneRotations = preferred;
+      final rotationPool = <TfliteProcessedGuess>[];
 
       for (final rotations in order) {
         List<String> raw = const [];
@@ -549,6 +551,8 @@ class TfStore extends ChangeNotifier {
         }
 
         if (candidate.isEmpty) continue;
+
+        rotationPool.addAll(candidate);
 
         if (_pipelineMode == ImagePipelineMode.legacy) {
           best = candidate;
@@ -618,6 +622,16 @@ class TfStore extends ChangeNotifier {
           seed: best,
           rotations: throneRotations,
         );
+      }
+
+      if (_needsMoreRoomTiles(best, expectedRoomTileCount) &&
+          rotationPool.isNotEmpty) {
+        best = TfliteHelper.classAwareNms(
+          [...best, ...rotationPool],
+          sameClassIou: _overlapThreshold,
+        );
+        log('merged ${rotationPool.length} rotation-pool detections → '
+            '${TfliteHelper.countRoomDetections(best)} room tiles');
       }
 
       if (_needsMoreRoomTiles(best, expectedRoomTileCount)) {

@@ -86,7 +86,8 @@ class _PreCastleScreenState extends State<PreCastleScreen> {
       if (mounted) {
 
         logNow(tag:'1convertGuessesToCastle');
-        var castleTiles = TfliteHelper.convertGuessesToCastle(guesses);
+        final buildResult = TfliteHelper.convertGuessesToCastleWithInfo(guesses);
+        final castleTiles = buildResult.grid;
         logNow(tag:'2convertGuessesToCastle');
 
         if (castleTiles.items.isEmpty) {
@@ -103,6 +104,10 @@ class _PreCastleScreenState extends State<PreCastleScreen> {
             numPicturesTaken: widget.numPicturesTaken,
             gameTitle: widget.gameTitle,
             expectedRoomTileCount: widget.expectedRoomTileCount,
+            cellGuesses: buildResult.cellGuesses,
+            offerGridMode: buildResult.shouldOfferGridMode(
+              expectedRoomTileCount: widget.expectedRoomTileCount,
+            ),
           );
           return;
         }

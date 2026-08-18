@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:btcc/src/utils/grid_expander.dart';
 import 'package:btcc/src/utils/tile_helper.dart';
+import 'package:btcc/src/utils/token_tile_grid.dart';
 
 import 'package:btcc/src/models/exports.dart';
 import 'dart:collection';
@@ -55,9 +56,12 @@ class Castle {
   Castle.fromHiveCastle(HiveCastle hiveCastle) {
     this.hiveCastle = hiveCastle;
     this.title = hiveCastle.title ?? 'Castle';
-    _initFromGridList(new GridList<Tile>(
-      hiveCastle.tileWidth!,
-      TileHelper().getListOfTilesFromIds(hiveCastle.tiles!),
+    _initFromGridList(TokenTileGrid.replaceGapFillingTokensWithEmpty(
+      GridList<Tile>(
+        hiveCastle.tileWidth!,
+        TileHelper().getListOfTilesFromIds(hiveCastle.tiles!),
+      ),
+      getEmpty: () => Empty(),
     ));
   }
 

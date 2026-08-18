@@ -90,6 +90,27 @@ class TileSelectionCalibration {
       core.right + padTiles * tileWidth,
       core.bottom + padTiles * tileHeight,
     );
+    return _clampToImage(r, imageW, imageH);
+  }
+
+  /// ~8×8 tile window centered on [cell], matching scoring-model training scale
+  /// (1664px ≈ 8 typical tiles across).
+  Rect scoringContextRect(
+    GridCell cell, {
+    required int imageW,
+    required int imageH,
+  }) {
+    final pitch = math.max(tileWidth, tileHeight);
+    final side = pitch * CastleTypicalExtents.baseWidthTypical;
+    final c = cellCenter(cell);
+    return _clampToImage(
+      Rect.fromCenter(center: c, width: side, height: side),
+      imageW,
+      imageH,
+    );
+  }
+
+  static Rect _clampToImage(Rect r, int imageW, int imageH) {
     return Rect.fromLTRB(
       r.left.clamp(0, imageW.toDouble()),
       r.top.clamp(0, imageH.toDouble()),

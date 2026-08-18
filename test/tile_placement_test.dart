@@ -446,6 +446,43 @@ void main() {
       expect(TilePlacement.invalidReasons(grid, 5), isEmpty);
       expect(TilePlacement.hasInvalidPlacement(grid, 0), isFalse);
     });
+
+    test('flags bonus among castle rooms before extract', () {
+      final grid = GridList<Tile>(4, [
+        Empty(), Empty(), Empty(), Empty(),
+        ThroneRoomPerCorridorFood(), Placeholder(), BCPerFood(), GreatHall(),
+        Empty(), Empty(), Empty(), Empty(),
+      ]);
+      expect(
+        TilePlacement.invalidReasons(grid, 6),
+        contains(PlacementInvalidReason.tokenAmongRooms),
+      );
+      expect(TilePlacement.hasInvalidPlacement(grid, 6), isTrue);
+      expect(TilePlacement.isGapFillingToken(grid, 6), isTrue);
+    });
+
+    test('does not flag a side-column bonus as a gap filler', () {
+      final grid = GridList<Tile>(4, [
+        Empty(), Empty(), Empty(), Empty(),
+        Empty(), ThroneRoomPerCorridorFood(), Placeholder(), BCPerFood(),
+        Empty(), Empty(), Empty(), Empty(),
+      ]);
+      expect(TilePlacement.isGapFillingToken(grid, 7), isFalse);
+      expect(TilePlacement.invalidReasons(grid, 7), isEmpty);
+    });
+
+    test('marks empty between placeholder and room on ground row', () {
+      final grid = GridList<Tile>(4, [
+        Empty(), Empty(), Empty(), Empty(),
+        ThroneRoomPerCorridorFood(), Placeholder(), Empty(), GreatHall(),
+        Empty(), Empty(), Empty(), Empty(),
+      ]);
+      expect(TilePlacement.isInvalidStructuralGap(grid, 6), isTrue);
+      expect(
+        TilePlacement.invalidReasons(grid, 6),
+        contains(PlacementInvalidReason.structuralGap),
+      );
+    });
   });
 
   group('GridListNormalizer interior gaps', () {

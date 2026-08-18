@@ -139,31 +139,47 @@ class TokenTileGrid {
 
   /// Pulls token tiles out of [grid], replacing them with [getEmpty].
   ///
-  /// Compacts rooms toward the throne only when tokens sat **among** rooms
-  /// (camera scan). A saved castle already has tokens on a leading strip;
-  /// compacting that would slide rooms back to an older packed layout.
+  /// Tokens that were stuffed into castle holes (unidentified-room
+  /// placeholders) are dropped, not promoted onto the token strip.
+  /// Does not compact rooms afterward — structural gaps stay visible as errors.
   static ({List<Tile> tokens, GridList<Tile> structural}) extractTokenTiles(
     GridList<Tile> grid, {
     required Tile Function() getEmpty,
   }) {
-    final compactHoles = !_tokensAreLeadingStrip(grid);
     final tokens = <Tile>[];
     final items = List<Tile>.from(grid.items);
     for (int i = 0; i < items.length; i++) {
-      if (isTokenTile(items[i])) {
+      if (!isTokenTile(items[i])) continue;
+      if (!TilePlacement.isGapFillingToken(grid, i)) {
         tokens.add(items[i]);
-        items[i] = getEmpty();
       }
+      items[i] = getEmpty();
     }
     final structural = GridList<Tile>(grid.width, items);
-    if (compactHoles) {
-      TilePlacement.compactTowardGround(structural, getEmpty: getEmpty);
-      TilePlacement.compactTowardGround(structural, getEmpty: getEmpty);
-    }
     return (
       tokens: tokens,
       structural: structural,
     );
+  }
+
+  /// Whether [index] sits in the visual token strip above all castle rooms.
+  static bool isTokenOnLeadingStrip(GridList<Tile> grid, int index) {
+    if (index < 0 || index >= grid.items.length) return false;
+    if (!isTokenTile(grid.items[index])) return false;
+
+    final w = grid.width;
+    final h = grid.height;
+    var firstStructuralRow = h;
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final t = grid.items[y * w + x];
+        if (!t.isEmpty() && !isTokenTile(t)) {
+          if (y < firstStructuralRow) firstStructuralRow = y;
+        }
+      }
+    }
+    if (firstStructuralRow >= h) return true;
+    return index ~/ w < firstStructuralRow;
   }
 
   /// True when every bonus/attendant sits in rows above all rooms — the
@@ -186,6 +202,24 @@ class TokenTileGrid {
     }
     if (lastTokenRow < 0) return true;
     return lastTokenRow < firstStructuralRow;
+  }
+
+  /// Replaces bonus/attendant tiles that were stuffed into castle holes with
+  /// empty error cells. Real tokens on the strip or beside the castle stay.
+  static GridList<Tile> replaceGapFillingTokensWithEmpty(
+    GridList<Tile> grid, {
+    required Tile Function() getEmpty,
+  }) {
+    final items = List<Tile>.from(grid.items);
+    var changed = false;
+    for (int i = 0; i < items.length; i++) {
+      if (TilePlacement.isGapFillingToken(grid, i)) {
+        items[i] = getEmpty();
+        changed = true;
+      }
+    }
+    if (!changed) return grid;
+    return GridList<Tile>(grid.width, items);
   }
 
   /// Prepends a top row for [tokens] above [structural] so tokens sit above

@@ -126,6 +126,10 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
   Future<void> _releaseCamera() async {
     if (_cameraReleased) return;
     _cameraReleased = true;
+    // Rebuild before dispose so CameraPreview is not built on a released controller.
+    if (mounted) {
+      setState(() {});
+    }
     try {
       if (controller.value.isInitialized &&
           controller.value.isStreamingImages) {
@@ -266,6 +270,7 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTapUp: (details) async {
+            if (_cameraReleased) return;
             final w = constraints.maxWidth;
             final h = constraints.maxHeight;
             if (w <= 0 || h <= 0) return;
@@ -274,9 +279,11 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
             await controller.setFocusPoint(Offset(x, y));
           },
           onScaleStart: (details) {
+            if (_cameraReleased) return;
             _startScaleFactor = _scaleFactor;
           },
           onScaleUpdate: (details) {
+            if (_cameraReleased) return;
             _scaleFactor = _startScaleFactor * details.scale;
 
             if (_scaleFactor < _zoomMin) {
@@ -294,7 +301,11 @@ class _CameraScreenState extends State<CameraScreen> with TickerProviderStateMix
           },
           child: ColoredBox(
             color: Colors.black,
-            child: !controller.value.isInitialized
+            child: _cameraReleased
+                ? (savingImage
+                    ? const Center(child: CircularProgressIndicator())
+                    : const SizedBox.shrink())
+                : !controller.value.isInitialized
                 ? const SizedBox.shrink()
                 : fill
                     ? SizedBox.expand(

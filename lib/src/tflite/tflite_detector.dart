@@ -676,16 +676,14 @@ class TfliteDetector {
     while (copy.isNotEmpty) {
       final top = copy.removeAt(0);
       best.add(top);
-      // Class-aware + throne/containment guards: attendants sit *on* the throne,
-      // so a high-score RA box must not wipe the larger TR* box (IoU can exceed
-      // crossClassIou when the attendant is fully inside the throne).
+      // Class-aware + throne/token guards: attendants may sit on the throne
+      // *or* beside it; bonus cards sit beside the castle. Never drop those
+      // classes to cross-class overlap with a room or throne box.
       copy.removeWhere((g) {
         final iou = top.calculateOverlap(g);
         if (g.label == top.label) return iou > overlapThreshold;
-        if (_isThroneLabelIndex(g.label)) return false;
-        if (_isThroneLabelIndex(top.label) && !_isThroneLabelIndex(g.label)) {
-          // Throne may suppress near-duplicate room boxes, not tokens on it.
-          if (_isTokenLabelIndex(g.label)) return false;
+        if (_isThroneLabelIndex(g.label) || _isTokenLabelIndex(g.label)) {
+          return false;
         }
         // Contained smaller box winning first must not kill a much larger parent.
         final gArea = g.area();

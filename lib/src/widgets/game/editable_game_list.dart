@@ -3,6 +3,7 @@ import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/utils/typedefs.dart';
 import 'package:btcc/src/widgets/castle/castle_list_item.dart';
 import 'package:btcc/src/widgets/game/player_list_item.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 enum _EntryKind { castle, player }
@@ -105,17 +106,17 @@ class EditableGameList extends StatelessWidget {
     }
   }
 
-  Widget _dragHandle(int index, {bool castleStyle = false}) {
-    final visual = castleStyle
-        ? const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 40, vertical: 2),
-            child: _CastleDragHandleVisual(),
-          )
-        : const Icon(Icons.drag_handle, color: Colors.white70);
+  static const Widget _dragHandleIcon =
+      Icon(Icons.drag_handle, color: Colors.white70);
 
+  /// Touch (not long-press) drag on the handle affordance.
+  Widget _dragHandle(int index) {
     return ReorderableDragStartListener(
       index: index,
-      child: visual,
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        child: _dragHandleIcon,
+      ),
     );
   }
 
@@ -133,7 +134,7 @@ class EditableGameList extends StatelessWidget {
         color: getCastleColorCallback?.call(castle) ?? AppColors.card,
         headerOnly: sorting,
         maxGridHeight: maxGridHeight,
-        dragHandle: sorting ? _dragHandle(listIndex, castleStyle: true) : null,
+        dragHandle: sorting ? _dragHandle(listIndex) : null,
         onOpen: sorting ? null : () => openCastleCallback(castle),
         onRename: sorting || renameCastleCallback == null
             ? null
@@ -166,6 +167,7 @@ class EditableGameList extends StatelessWidget {
 
         return ReorderableListView.builder(
           buildDefaultDragHandles: false,
+          dragStartBehavior: DragStartBehavior.down,
           onReorderItem: _onReorderItem,
           proxyDecorator: (child, index, animation) {
             Widget feedback = child;
@@ -275,27 +277,6 @@ class EditableGameList extends StatelessWidget {
           },
         );
       },
-    );
-  }
-}
-
-/// Short, wide grabber for castle cards.
-class _CastleDragHandleVisual extends StatelessWidget {
-  const _CastleDragHandleVisual();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      height: 12,
-      child: Center(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.white54,
-            borderRadius: BorderRadius.all(Radius.circular(2)),
-          ),
-          child: SizedBox(width: 40, height: 4),
-        ),
-      ),
     );
   }
 }
