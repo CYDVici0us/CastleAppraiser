@@ -2,6 +2,7 @@ import 'package:btcc/src/app/app_widget.dart';
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/utils/navigation_helper.dart';
 import 'package:btcc/src/utils/string_helper.dart';
+import 'package:btcc/src/utils/debug_castle_assets.dart';
 import 'package:btcc/src/utils/typedefs.dart';
 import 'package:btcc/src/widgets/castle/castle_tiles_grid.dart';
 import 'package:btcc/src/widgets/tile/tile_widget.dart';
@@ -19,6 +20,14 @@ class GameListItem extends StatelessWidget {
   });
 
   void _onLongPress(BuildContext context) {
+    if (DebugCastleAssets.isDebugGameTitle(game.hiveGame.title)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('The Debug game stays in debug builds and cannot be deleted'),
+        ),
+      );
+      return;
+    }
     showDialog(
       context: context,
       builder: (_) => AsyncConfirmationDialog(

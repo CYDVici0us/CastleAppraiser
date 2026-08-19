@@ -26,6 +26,10 @@ class HiveCastle extends HiveObject {
   @HiveField(5)
   String? title;
 
+  /// Bundled debug photo basename (`20260816_044725.jpg`), or null if captured.
+  @HiveField(6)
+  String? debugAssetName;
+
   HiveCastle({
     this.tiles,
     this.tileWidth,
@@ -33,6 +37,7 @@ class HiveCastle extends HiveObject {
     this.created,
     this.updated,
     this.title,
+    this.debugAssetName,
   });
 
   HiveCastle.fromCastle(Castle castle) {
@@ -42,6 +47,7 @@ class HiveCastle extends HiveObject {
     this.created = castle.hiveCastle == null ? DateTime.now() : castle.hiveCastle!.created;
     this.updated = DateTime.now();
     this.title = castle.title;
+    this.debugAssetName = castle.hiveCastle?.debugAssetName;
   }
 
   @override
@@ -53,5 +59,6 @@ class HiveCastle extends HiveObject {
     'created': created.toString(),
     'updated': updated.toString(),
     'title': title,
+    'debugAssetName': debugAssetName,
   };
 }

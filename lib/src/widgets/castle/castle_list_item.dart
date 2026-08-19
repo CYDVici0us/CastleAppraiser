@@ -16,6 +16,7 @@ class CastleListItem extends StatelessWidget {
   final VoidCallback? onOpen;
   final VoidCallback? onRename;
   final VoidCallback? onEdit;
+  final VoidCallback? onExport;
   /// When true, hide the tile grid and show only the title/score row.
   final bool headerOnly;
   /// Reorder drag affordance; omitted outside sorting mode.
@@ -31,6 +32,7 @@ class CastleListItem extends StatelessWidget {
     this.onOpen,
     this.onRename,
     this.onEdit,
+    this.onExport,
     this.headerOnly = false,
     this.dragHandle,
     this.maxGridHeight,
@@ -45,6 +47,10 @@ class CastleListItem extends StatelessWidget {
     }
     if (value == 'edit') {
       onEdit?.call();
+      return;
+    }
+    if (value == 'export') {
+      onExport?.call();
       return;
     }
     if (value == 'rename') {
@@ -164,6 +170,17 @@ class CastleListItem extends StatelessWidget {
                               Icon(Icons.edit),
                               SizedBox(width: 12),
                               Text('Edit'),
+                            ],
+                          ),
+                        ),
+                      if (onExport != null)
+                        const PopupMenuItem(
+                          value: 'export',
+                          child: Row(
+                            children: [
+                              Icon(Icons.ios_share),
+                              SizedBox(width: 12),
+                              Text('Export fixture'),
                             ],
                           ),
                         ),

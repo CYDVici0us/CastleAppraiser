@@ -6,6 +6,7 @@ import 'package:btcc/src/screens/castle_confirm_screen.dart';
 import 'package:btcc/src/screens/castle_frame_screen.dart';
 import 'package:btcc/src/screens/castle_screen.dart';
 import 'package:btcc/src/screens/debug_ml_screen.dart';
+import 'package:btcc/src/screens/debug_asset_picker_screen.dart';
 import 'package:btcc/src/screens/game_edit_screen.dart';
 import 'package:btcc/src/screens/photo_workflow_screen.dart';
 import 'package:btcc/src/screens/pre_camera_screen.dart';
@@ -226,6 +227,23 @@ class NavigationHelper {
   static goToDebugMlScreen(BuildContext context, {String? imagePath, bool replace=false}) {
     var route = MaterialPageRoute<Null>(
         builder: (_) => DebugMLScreen(imagePath)
+    );
+    _goTo(context, route, replace: replace);
+  }
+
+  static goToDebugAssetPickerScreen(
+    BuildContext context, {
+    required AddCastleToGameCallback addCastleCallback,
+    required String gameTitle,
+    required ValueChanged<String> onAssetChosen,
+    bool replace = false,
+  }) {
+    final route = MaterialPageRoute<Null>(
+      builder: (_) => DebugAssetPickerScreen(
+        addCastleCallback: addCastleCallback,
+        gameTitle: gameTitle,
+        onAssetChosen: onAssetChosen,
+      ),
     );
     _goTo(context, route, replace: replace);
   }

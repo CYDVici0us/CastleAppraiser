@@ -5,6 +5,7 @@ import 'package:btcc/src/utils/log.dart';
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/utils/player_helper.dart';
 import 'package:btcc/src/utils/typedefs.dart';
+import 'package:btcc/src/utils/debug_castle_assets.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:path_provider/path_provider.dart';
@@ -19,7 +20,19 @@ class DataStore extends ChangeNotifier {
   List<HiveGame> _storedGames = [];
   UnmodifiableListView<Game> get games {
     var hiveGames = _storedGames.map((e) => Game.fromHiveGame(e)).toList();
-    hiveGames.sort((a, b) => b.hiveGame.created!.compareTo(a.hiveGame.created!));
+    if (!kDebugMode) {
+      hiveGames.removeWhere(
+        (g) => DebugCastleAssets.isDebugGameTitle(g.hiveGame.title),
+      );
+    }
+    hiveGames.sort((a, b) {
+      if (kDebugMode) {
+        final aDebug = DebugCastleAssets.isDebugGameTitle(a.hiveGame.title);
+        final bDebug = DebugCastleAssets.isDebugGameTitle(b.hiveGame.title);
+        if (aDebug != bDebug) return aDebug ? -1 : 1;
+      }
+      return b.hiveGame.created!.compareTo(a.hiveGame.created!);
+    });
     return new UnmodifiableListView(hiveGames);
   }
     
@@ -47,10 +60,24 @@ class DataStore extends ChangeNotifier {
 
     _gameBox = await Hive.openBox<HiveGame>(_gameBoxKey);
     _storedGames = _gameBox.values.toList();
-    
+
+    if (kDebugMode) {
+      await ensureDebugGame();
+    }
+
     notifyListeners();
 
     await _cleanUpImagesNotAssociatedWithCastles();
+  }
+
+  /// Debug-only fixture lab. Created once; pinned at the top of the game list.
+  Future<Game> ensureDebugGame() async {
+    for (final existing in _storedGames) {
+      if (DebugCastleAssets.isDebugGameTitle(existing.title)) {
+        return Game.fromHiveGame(existing);
+      }
+    }
+    return createAndPersistGame(title: DebugCastleAssets.gameTitle);
   }
 
   Future<void> _cleanUpImagesNotAssociatedWithCastles() async {
@@ -194,6 +221,9 @@ class DataStore extends ChangeNotifier {
     if (castle.title.isNotEmpty) {
       hiveCastle.title = castle.title;
     }
+    if (castle.hiveCastle?.debugAssetName != null) {
+      hiveCastle.debugAssetName = castle.hiveCastle!.debugAssetName;
+    }
     await hiveCastle.save();
 
     game.hiveGame.updated = DateTime.now();
@@ -238,13 +268,14 @@ class DataStore extends ChangeNotifier {
   }
 
   Future<Game> addCastleToGame(Castle castle, String imagePath, Game game, 
-    int numPicturesTaken) 
+    int numPicturesTaken, {String? debugAssetName}) 
   async {
     var hiveCastle = new HiveCastle.fromCastle(castle);
     if (hiveCastle.title == null || hiveCastle.title == '') {
       hiveCastle.title = nextCastleTitle(game);
     }
     hiveCastle.imagePath = imagePath;
+    hiveCastle.debugAssetName = debugAssetName;
 
     addCastle(hiveCastle);
     game.hiveGame.castles!.add(hiveCastle);

@@ -23,13 +23,14 @@ class HiveCastleAdapter extends TypeAdapter<HiveCastle> {
       created: fields[3] as DateTime?,
       updated: fields[4] as DateTime?,
       title: fields[5] as String?,
+      debugAssetName: fields[6] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveCastle obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.tiles)
       ..writeByte(1)
@@ -41,7 +42,9 @@ class HiveCastleAdapter extends TypeAdapter<HiveCastle> {
       ..writeByte(4)
       ..write(obj.updated)
       ..writeByte(5)
-      ..write(obj.title);
+      ..write(obj.title)
+      ..writeByte(6)
+      ..write(obj.debugAssetName);
   }
 
   @override

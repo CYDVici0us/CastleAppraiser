@@ -4,6 +4,8 @@ import 'package:btcc/src/state/camera_store.dart';
 import 'package:btcc/src/state/data_store.dart';
 import 'package:btcc/src/utils/navigation_helper.dart';
 import 'package:btcc/src/utils/tile_helper.dart';
+import 'package:btcc/src/utils/debug_castle_assets.dart';
+import 'package:btcc/src/utils/castle_fixture_export.dart';
 import 'package:btcc/src/widgets/background_container.dart';
 import 'package:btcc/src/widgets/builder/tile_picker_sheet.dart';
 import 'package:btcc/src/widgets/button_padding.dart';
@@ -26,8 +28,12 @@ class _GameEditScreenState extends State<GameEditScreen> {
   
   Game? game;
   bool _sorting = false;
+  String? _pendingDebugAssetName;
 
   _GameEditScreenState({this.game});
+
+  bool get _isDebugGame =>
+      kDebugMode && DebugCastleAssets.isDebugGameTitle(game?.hiveGame.title);
 
   @override
   void initState() {
@@ -36,15 +42,22 @@ class _GameEditScreenState extends State<GameEditScreen> {
 
   Future<void> _addCastle(Castle castle, String imagePath, 
     int numPicturesTaken) async {
+    final assetName = _pendingDebugAssetName;
+    _pendingDebugAssetName = null;
+
     if (this.game == null) {
       var store = Provider.of<DataStore>(context, listen: false);
       this.game = await store.createAndPersistGame();
     }
 
     var store = Provider.of<DataStore>(context, listen: false);
-    castle.title = store.nextCastleTitle(this.game!);
+    if (assetName != null && assetName.isNotEmpty) {
+      castle.title = DebugCastleAssets.stem(assetName);
+    } else {
+      castle.title = store.nextCastleTitle(this.game!);
+    }
     var updated = await store.addCastleToGame(castle, imagePath, 
-      this.game!, numPicturesTaken);
+      this.game!, numPicturesTaken, debugAssetName: assetName);
 
     updated.recalculateScores();
     
@@ -91,7 +104,7 @@ class _GameEditScreenState extends State<GameEditScreen> {
   }
 
   void _renameGame() {
-    if (game == null) return;
+    if (game == null || _isDebugGame) return;
     showDialog(
       context: context,
       builder: (_) => EditTextDialog(
@@ -179,6 +192,7 @@ class _GameEditScreenState extends State<GameEditScreen> {
   }
 
   Future<void> _onBuildCastle() async {
+    _pendingDebugAssetName = null;
     final TileId throneId;
     if (kDebugMode) {
       throneId = TileId.ThroneRoomPerCorridorDownstairs;
@@ -248,8 +262,78 @@ class _GameEditScreenState extends State<GameEditScreen> {
     openCastleCallback: _openCastle,
     renameCastleCallback: _renameCastle,
     editCastleCallback: _editCastle,
+    exportCastleCallback: _isDebugGame ? _exportCastle : null,
     getCastleColorCallback: _getCastleItemColor,
   );
+
+  Future<void> _exportCastle(Castle castle) async {
+    try {
+      await CastleFixtureExport.share(castle);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not export fixture: $e')),
+      );
+    }
+  }
+
+  void _openAddCastle() {
+    _pendingDebugAssetName = null;
+    if (_isDebugGame) {
+      showModalBottomSheet<void>(
+        context: context,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('Take or pick a photo'),
+                subtitle: const Text('Export JSON + image after you fix the map'),
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _startCameraFlow();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Choose debug photo'),
+                subtitle: const Text(
+                    'test/fixtures/castles — export JSON next to the photo'),
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _startDebugAssetFlow();
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+      return;
+    }
+    _startCameraFlow();
+  }
+
+  void _startCameraFlow() {
+    final cameraStore = Provider.of<CameraStore>(context, listen: false);
+    NavigationHelper.goToCameraExperience(
+      context,
+      addCastleCallback: _addCastle,
+      numPicturesTaken: 0,
+      replace: false,
+      cameraTech: cameraStore.cameraTech,
+      gameTitle: game?.title ?? 'New Game',
+    );
+  }
+
+  void _startDebugAssetFlow() {
+    NavigationHelper.goToDebugAssetPickerScreen(
+      context,
+      addCastleCallback: _addCastle,
+      gameTitle: game?.title ?? DebugCastleAssets.gameTitle,
+      onAssetChosen: (name) => _pendingDebugAssetName = name,
+    );
+  }
 
   void _showInfoDialog(BuildContext context) {
     showDialog(
@@ -302,20 +386,11 @@ class _GameEditScreenState extends State<GameEditScreen> {
           onPressed: _onBuildCastle,
         ),
         const Spacer(),
-        Consumer<CameraStore>(
-          builder: (_, cameraStore, __) => FloatingActionButton.extended(
-            heroTag: '1',
-            label: const Text('Add Castle'),
-            icon: const Icon(Icons.camera_alt),
-            onPressed: () => NavigationHelper.goToCameraExperience(
-              context,
-              addCastleCallback: _addCastle,
-              numPicturesTaken: 0,
-              replace: false,
-              cameraTech: cameraStore.cameraTech,
-              gameTitle: game?.title ?? 'New Game',
-            ),
-          ),
+        FloatingActionButton.extended(
+          heroTag: '1',
+          label: Text(_isDebugGame ? 'Add debug castle' : 'Add Castle'),
+          icon: const Icon(Icons.camera_alt),
+          onPressed: _openAddCastle,
         ),
         const SizedBox(width: 8),
       ],
@@ -348,8 +423,8 @@ class _GameEditScreenState extends State<GameEditScreen> {
             if (!_sorting) ...[
               IconButton(
                 icon: const Icon(Icons.edit),
-                tooltip: 'Rename game',
-                onPressed: game == null ? null : _renameGame,
+                tooltip: _isDebugGame ? 'Debug game cannot be renamed' : 'Rename game',
+                onPressed: game == null || _isDebugGame ? null : _renameGame,
               ),
               IconButton(
                 icon: const Icon(Icons.person_add),
@@ -370,8 +445,10 @@ class _GameEditScreenState extends State<GameEditScreen> {
               Expanded(
                 child: game == null ||
                         (game!.castles.isEmpty && game!.playerNames.isEmpty)
-                    ? const Center(
-                        child: Text('Add a castle or player to get started'),
+                    ? Center(
+                        child: Text(_isDebugGame
+                            ? 'Add a debug castle, fix rooms and tokens, then export'
+                            : 'Add a castle or player to get started'),
                       )
                     : _getCastleList(),
               ),

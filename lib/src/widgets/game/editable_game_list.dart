@@ -26,6 +26,7 @@ class EditableGameList extends StatelessWidget {
   final void Function(Castle castle) openCastleCallback;
   final void Function(Castle castle)? renameCastleCallback;
   final void Function(Castle castle)? editCastleCallback;
+  final void Function(Castle castle)? exportCastleCallback;
   final Color Function(Castle castle)? getCastleColorCallback;
 
   const EditableGameList({
@@ -40,6 +41,7 @@ class EditableGameList extends StatelessWidget {
     required this.openCastleCallback,
     this.renameCastleCallback,
     this.editCastleCallback,
+    this.exportCastleCallback,
     this.getCastleColorCallback,
   });
 
@@ -142,6 +144,9 @@ class EditableGameList extends StatelessWidget {
         onEdit: sorting || editCastleCallback == null
             ? null
             : () => editCastleCallback!(castle),
+        onExport: sorting || exportCastleCallback == null
+            ? null
+            : () => exportCastleCallback!(castle),
       ),
     );
   }
