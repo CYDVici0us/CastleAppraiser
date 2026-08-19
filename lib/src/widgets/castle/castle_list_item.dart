@@ -1,6 +1,7 @@
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:btcc/src/app/app_widget.dart';
 import 'package:btcc/src/models/exports.dart';
+import 'package:btcc/src/utils/token_tile_grid.dart';
 import 'package:btcc/src/utils/typedefs.dart';
 import 'package:btcc/src/widgets/async_confirmation_dialog.dart';
 import 'package:btcc/src/widgets/tile/tile_widget.dart';
@@ -17,6 +18,7 @@ class CastleListItem extends StatelessWidget {
   final VoidCallback? onRename;
   final VoidCallback? onEdit;
   final VoidCallback? onExport;
+  final VoidCallback? onExportScan;
   /// When true, hide the tile grid and show only the title/score row.
   final bool headerOnly;
   /// Reorder drag affordance; omitted outside sorting mode.
@@ -33,6 +35,7 @@ class CastleListItem extends StatelessWidget {
     this.onRename,
     this.onEdit,
     this.onExport,
+    this.onExportScan,
     this.headerOnly = false,
     this.dragHandle,
     this.maxGridHeight,
@@ -51,6 +54,10 @@ class CastleListItem extends StatelessWidget {
     }
     if (value == 'export') {
       onExport?.call();
+      return;
+    }
+    if (value == 'export-scan') {
+      onExportScan?.call();
       return;
     }
     if (value == 'rename') {
@@ -184,6 +191,17 @@ class CastleListItem extends StatelessWidget {
                             ],
                           ),
                         ),
+                      if (onExportScan != null)
+                        const PopupMenuItem(
+                          value: 'export-scan',
+                          child: Row(
+                            children: [
+                              Icon(Icons.analytics_outlined),
+                              SizedBox(width: 12),
+                              Text('Export scan'),
+                            ],
+                          ),
+                        ),
                       if (onRename != null)
                         const PopupMenuItem(
                           value: 'rename',
@@ -214,7 +232,10 @@ class CastleListItem extends StatelessWidget {
               const SizedBox(height: 8),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final grid = castle.castleTiles;
+                  final grid = TokenTileGrid.previewStructuralGrid(
+                    castle.castleTiles,
+                    getEmpty: () => Empty(),
+                  );
                   final tile = TileWidget.defaultTileWidthHeight;
                   final naturalW = grid.width * tile;
                   final naturalH = grid.height * tile;

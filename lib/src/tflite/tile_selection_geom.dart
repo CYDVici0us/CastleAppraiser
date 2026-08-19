@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:btcc/src/tflite/castle_typical_extents.dart';
+import 'package:btcc/src/tflite/throne_anchored_lattice.dart';
 
 /// Integer grid coordinate relative to the throne anchor (left cell of 2-wide
 /// throne at ground row = (0, 0); placeholder at (1, 0)).
@@ -44,7 +45,7 @@ class TileSelectionCalibration {
   });
 
   double get tileWidth => throneRect.width / 2;
-  double get tileHeight => throneRect.height;
+  double get tileHeight => tileWidth;
 
   /// Image-space rect for a single grid cell.
   Rect cellRect(GridCell cell) {
@@ -119,6 +120,28 @@ class TileSelectionCalibration {
     );
   }
 
+  /// Rebuild the 2-wide throne box from a refined lattice (same bounds).
+  TileSelectionCalibration refinePitch(
+    Iterable<(int gx, int gy, double cx, double cy)> samples,
+  ) {
+    final refined = ThroneAnchoredLattice(
+      originX: throneRect.left,
+      originY: throneRect.top,
+      tileW: tileWidth,
+      tileH: tileHeight,
+    ).refinePitch(samples: samples);
+    return TileSelectionCalibration(
+      imagePath: imagePath,
+      throneRect: Rect.fromLTWH(
+        refined.originX,
+        refined.originY,
+        refined.tileW * 2,
+        refined.tileH,
+      ),
+      boundsRect: boundsRect,
+    );
+  }
+
   GridCell? cellAtImagePoint(
     Offset imagePoint, {
     bool requireInBounds = true,
@@ -162,6 +185,28 @@ class TileSelectionCalibration {
         }
       }
     }
+  }
+
+  /// Map occupancy taps from [from] onto [to] by each cell's image-space center.
+  static Set<GridCell> remapMarkedCells({
+    required Set<GridCell> marked,
+    required TileSelectionCalibration from,
+    required TileSelectionCalibration to,
+  }) {
+    final out = <GridCell>{
+      const GridCell(0, 0),
+      const GridCell(1, 0),
+    };
+    for (final cell in marked) {
+      if (cell.isThroneOrPlaceholder) continue;
+      final mapped = to.cellAtImagePoint(
+        from.cellCenter(cell),
+        requireInBounds: true,
+      );
+      if (mapped == null || mapped.isThroneOrPlaceholder) continue;
+      out.add(mapped);
+    }
+    return out;
   }
 
   /// Bounding box of [marked] in grid coordinates → grid width/height.

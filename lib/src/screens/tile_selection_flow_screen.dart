@@ -4,8 +4,10 @@ import 'dart:ui' as ui;
 
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/state/tf_store.dart';
+import 'package:btcc/src/tflite/castle_occupancy.dart';
 import 'package:btcc/src/tflite/tile_selection_builder.dart';
 import 'package:btcc/src/tflite/tile_selection_geom.dart';
+import 'package:btcc/src/tflite/tile_selection_match.dart';
 import 'package:btcc/src/tflite/tflite_helper.dart';
 import 'package:btcc/src/tflite/windowed_detect.dart';
 import 'package:btcc/src/utils/castle_frame_crop.dart';
@@ -54,6 +56,7 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
   Size? _lastViewport;
   Size? _layoutSize;
   double _viewerMinScale = 0.01;
+  double? _boundsFitScale;
 
   ui.Rect? _throneRect;
   ui.Rect? _boundsRect;
@@ -123,15 +126,14 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
 
   static const _wizardStepLabels = [
     'Align throne',
-    'Fit castle',
     'Mark tiles',
   ];
 
   int get _wizardStepIndex => switch (_step) {
         _TileSelectionStep.throne => 0,
-        _TileSelectionStep.bounds => 1,
-        _TileSelectionStep.mark => 2,
-        _TileSelectionStep.process => 2,
+        _TileSelectionStep.bounds => 0,
+        _TileSelectionStep.mark => 1,
+        _TileSelectionStep.process => 1,
       };
 
   List<String> get _breadcrumbSegments => [
@@ -290,6 +292,9 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
       viewport: viewport,
       initialTransform: matrix,
     );
+    if (_step == _TileSelectionStep.bounds) {
+      _boundsFitScale = matrix.getMaxScaleOnAxis();
+    }
   }
 
   void _fitIfNeeded(Size viewport, Rect frame) {
@@ -409,15 +414,27 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
         tileW: cal.tileWidth,
         tileH: cal.tileHeight,
       );
+      final refined = refineCalibrationFromGuesses(cal, guesses);
+      _throneRect = refined.throneRect;
       final seeded = WindowedDetect.seedMarkedCells(
         guesses: guesses,
-        calibration: cal,
+        calibration: refined,
         alwaysMarked: _marked,
       );
+      // Remove autoseed artifacts that are not connected to the throne.
+      final prunedRel = CastleOccupancy.pruneDisconnected(
+        cells: seeded.map((c) => (c.x, c.y)).toSet(),
+        throneCell: (0, 0),
+      );
+      final pruned = prunedRel.map((t) => GridCell(t.$1, t.$2)).toSet();
       _marked
         ..clear()
-        ..addAll(seeded);
-      log('autoseed marked ${_marked.length} cells from ${guesses.length} detections');
+        ..addAll(pruned);
+      log('autoseed marked ${_marked.length} cells from ${guesses.length} detections '
+          'tile=${refined.tileWidth.toStringAsFixed(1)}x'
+          '${refined.tileHeight.toStringAsFixed(1)} '
+          '(throne was ${cal.tileWidth.toStringAsFixed(1)}x'
+          '${cal.tileHeight.toStringAsFixed(1)})');
     } catch (ex, st) {
       log('autoseed failed: $ex');
       log(st);
@@ -431,18 +448,32 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
 
     if (_step == _TileSelectionStep.throne) {
       _snapshotThroneView();
+      final throneRect = _imageCropFromFrame(
+        frame: _frame!,
+        viewport: _lastViewport!,
+        forThroneCalibration: true,
+      );
+      final imageSize = _imageSize!;
+      final bounds = ui.Rect.fromLTWH(
+        0, 0,
+        imageSize.width.toDouble(),
+        imageSize.height.toDouble(),
+      );
       setState(() {
-        _throneRect = _imageCropFromFrame(
-          frame: _frame!,
-          viewport: _lastViewport!,
-          forThroneCalibration: true,
-        );
-        _step = _TileSelectionStep.bounds;
+        _throneRect = throneRect;
+        _busy = true;
+        _error = null;
+      });
+      await _autoseedFromDetections(bounds);
+      if (!mounted) return;
+      setState(() {
+        _boundsRect = bounds;
+        _step = _TileSelectionStep.mark;
+        _busy = false;
         _didInitialFit = false;
         _markFitReady = false;
         _restoreViewOnNextFrame = false;
         _viewerMinScale = 0.01;
-        _error = null;
       });
       return;
     }
@@ -593,7 +624,7 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
       case _TileSelectionStep.bounds:
         _goToStep(_TileSelectionStep.throne);
       case _TileSelectionStep.mark:
-        _goToStep(_TileSelectionStep.bounds);
+        _goToStep(_TileSelectionStep.throne);
       default:
         Navigator.of(context).pop();
     }
@@ -665,10 +696,12 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
                             InteractiveViewer(
                               transformationController: _transform,
                               constrained: false,
+                              panEnabled: _boundsFitScale == null,
+                              scaleEnabled: _boundsFitScale == null,
                               panAxis: PanAxis.free,
                               boundaryMargin: const EdgeInsets.all(500),
-                              minScale: _viewerMinScale,
-                              maxScale: 8,
+                              minScale: _boundsFitScale ?? _viewerMinScale,
+                              maxScale: _boundsFitScale ?? 8,
                               clipBehavior: Clip.none,
                               child: Image.file(
                                 File(widget.imagePath),
@@ -800,7 +833,7 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
                   SafeArea(
                     top: false,
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
                       child: Column(
                         children: [
                           if (_error != null)
@@ -826,52 +859,21 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
                                 textAlign: TextAlign.center,
                               ),
                             ),
-                          if (_step == _TileSelectionStep.mark)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: OutlinedButton.icon(
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.white,
-                                  side: const BorderSide(color: Colors.white54),
-                                ),
-                                onPressed: _busy
-                                    ? null
-                                    : () => _goToStep(_TileSelectionStep.bounds),
-                                icon: const Icon(Icons.crop_free),
-                                label: const Text('Adjust framing'),
-                              ),
-                            ),
-                          if (_step == _TileSelectionStep.bounds)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: OutlinedButton.icon(
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.white,
-                                  side: const BorderSide(color: Colors.white54),
-                                ),
-                                onPressed: _busy
-                                    ? null
-                                    : () => setState(() {
-                                          _portraitFrame = !_portraitFrame;
-                                          _didInitialFit = false;
-                                          _markFitReady = false;
-                                          _restoreViewOnNextFrame = false;
-                                        }),
-                                icon: Icon(
-                                  _portraitFrame
-                                      ? Icons.crop_landscape
-                                      : Icons.crop_portrait,
-                                ),
-                                label: Text(
-                                  _portraitFrame
-                                      ? 'Landscape bounds'
-                                      : 'Portrait bounds',
-                                ),
-                              ),
-                            ),
                           SizedBox(
                             width: double.infinity,
+                            height: 56,
                             child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                minimumSize: const Size.fromHeight(56),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 24,
+                                ),
+                                textStyle: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                iconSize: 22,
+                              ),
                               onPressed: _busy ? null : _onContinue,
                               icon: const Icon(Icons.arrow_forward),
                               label: Text(

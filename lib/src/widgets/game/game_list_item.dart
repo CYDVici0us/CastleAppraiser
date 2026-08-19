@@ -3,6 +3,7 @@ import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/utils/navigation_helper.dart';
 import 'package:btcc/src/utils/string_helper.dart';
 import 'package:btcc/src/utils/debug_castle_assets.dart';
+import 'package:btcc/src/utils/token_tile_grid.dart';
 import 'package:btcc/src/utils/typedefs.dart';
 import 'package:btcc/src/widgets/castle/castle_tiles_grid.dart';
 import 'package:btcc/src/widgets/tile/tile_widget.dart';
@@ -55,7 +56,10 @@ class GameListItem extends StatelessWidget {
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final grid = castle.castleTiles;
+                  final grid = TokenTileGrid.previewStructuralGrid(
+                    castle.castleTiles,
+                    getEmpty: () => Empty(),
+                  );
                   const tile = TileWidget.defaultTileWidthHeight;
                   final naturalW = grid.width * tile;
                   final naturalH = grid.height * tile;

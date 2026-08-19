@@ -49,11 +49,32 @@ class CastleScreen extends StatelessWidget {
 
   Future<void> _exportFixture(BuildContext context) async {
     try {
-      await CastleFixtureExport.share(castle);
+      final golden = await CastleFixtureExport.share(castle);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Golden $golden — re-export scan to link it, or edit "golden" '
+            'in an existing scan JSON.',
+          ),
+          duration: const Duration(seconds: 6),
+        ),
+      );
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Could not export fixture: $e')),
+      );
+    }
+  }
+
+  Future<void> _exportScan(BuildContext context) async {
+    try {
+      await CastleFixtureExport.promptAndShareScan(context, castle);
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not export scan: $e')),
       );
     }
   }
@@ -206,10 +227,26 @@ class CastleScreen extends StatelessWidget {
             },
           ),
           if (kDebugMode)
-            IconButton(
+            PopupMenuButton<String>(
+              tooltip: 'Debug export',
               icon: const Icon(Icons.ios_share),
-              tooltip: 'Export fixture',
-              onPressed: () => _exportFixture(context),
+              onSelected: (value) {
+                if (value == 'fixture') {
+                  _exportFixture(context);
+                } else if (value == 'scan') {
+                  _exportScan(context);
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'fixture',
+                  child: Text('Export fixture'),
+                ),
+                PopupMenuItem(
+                  value: 'scan',
+                  child: Text('Export scan'),
+                ),
+              ],
             ),
           if (!onlyShowScoreCard) IconButton(
             icon: const Icon(Icons.share),

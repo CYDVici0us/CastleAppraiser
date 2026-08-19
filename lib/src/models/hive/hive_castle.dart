@@ -35,6 +35,11 @@ class HiveCastle extends HiveObject {
   @HiveField(7)
   String? scanGuessJson;
 
+  /// Debug-only golden JSON basename this castle's scan export should reference
+  /// (`TBD.json` until a fixture is exported, then the fixture basename).
+  @HiveField(8)
+  String? debugGoldenJson;
+
   HiveCastle({
     this.tiles,
     this.tileWidth,
@@ -44,6 +49,7 @@ class HiveCastle extends HiveObject {
     this.title,
     this.debugAssetName,
     this.scanGuessJson,
+    this.debugGoldenJson,
   });
 
   HiveCastle.fromCastle(Castle castle) {
@@ -67,5 +73,6 @@ class HiveCastle extends HiveObject {
     'title': title,
     'debugAssetName': debugAssetName,
     'scanGuessJson': scanGuessJson,
+    'debugGoldenJson': debugGoldenJson,
   };
 }

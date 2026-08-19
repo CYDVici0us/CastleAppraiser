@@ -1,7 +1,10 @@
 import 'package:btcc/src/models/exports.dart';
+import 'package:btcc/src/models/hive/hive_castle.dart';
 import 'package:btcc/src/tflite/castle_fixture.dart';
+import 'package:btcc/src/tflite/castle_scan_run.dart';
 import 'package:btcc/src/tflite/cell_guess_info.dart';
 import 'package:btcc/src/tflite/cell_guess_remap.dart';
+import 'package:btcc/src/utils/castle_fixture_export.dart';
 import 'package:btcc/src/utils/grid_expander.dart';
 import 'package:btcc/src/utils/tile_helper.dart';
 import 'package:btcc/src/utils/token_tile_grid.dart';
@@ -46,7 +49,6 @@ void main() {
     ]));
     expect(fixture.bonus, ['BCFOOD']);
     expect(fixture.attendants, ['RAT', 'RAT']);
-    expect(fixture.scan, isEmpty);
   });
 
   test('copy tiles export canonical detector labels', () {
@@ -108,7 +110,7 @@ void main() {
     expect(diff.isPerfect, isFalse);
   });
 
-  test('fixture export includes throne-relative scan metadata', () {
+  test('scan export references a golden and keeps detector occupancy', () {
     final grid = GridList<Tile>(3, [
       helper.getTileById(TileId.ThroneRoomPerCorridorDownstairs),
       Placeholder(),
@@ -120,21 +122,81 @@ void main() {
       2: CellGuessInfo.unidentifiedCell(alternatives: [TileLabels.KITCHEN]),
     };
 
-    final fixture = CastleFixture.fromCastle(
+    final run = CastleScanRun.fromCastle(
       castle,
-      imageFileName: 'scan.jpg',
-      fromAsset: false,
+      golden: 'Castle_1_1787098424630.json',
+      captured: DateTime.utc(2026, 8, 19, 1, 2, 3),
     );
 
-    expect(fixture.scan['0,0']!.level, GuessConfidenceLevel.high);
-    expect(fixture.scan['2,0']!.unidentified, isTrue);
-    expect(fixture.scan['2,0']!.alternatives, [TileLabels.KITCHEN]);
+    expect(run.golden, 'Castle_1_1787098424630.json');
+    expect(
+      run.jsonFileName,
+      'Castle_1_1787098424630_scan_${run.captured.millisecondsSinceEpoch}.json',
+    );
+    expect(run.labels['2,0'], 'KITCHEN');
+    expect(run.scan['0,0']!.level, GuessConfidenceLevel.high);
+    expect(run.scan['2,0']!.unidentified, isTrue);
 
-    final json = fixture.toJson();
-    expect(json.containsKey('scan'), isTrue);
-    final roundTrip = CastleFixture.fromJson(json);
-    expect(roundTrip.scan['2,0']!.unidentified, isTrue);
+    final json = run.toJson();
+    expect(json['golden'], 'Castle_1_1787098424630.json');
+    expect(json.containsKey('image'), isFalse);
+    expect(CastleFixture.isScanDocument(json), isTrue);
+
+    final roundTrip = CastleScanRun.fromJson(json);
+    expect(roundTrip.golden, run.golden);
+    expect(roundTrip.scan['2,0']!.alternatives, [TileLabels.KITCHEN]);
     expect(roundTrip.scan['0,0']!.score, closeTo(0.9, 0.001));
+  });
+
+  test('two scan runs can point at the same golden', () {
+    final grid = GridList<Tile>(3, [
+      helper.getTileById(TileId.ThroneRoomPerCorridorDownstairs),
+      Placeholder(),
+      Empty(),
+    ]);
+    final first = CastleScanRun.fromCastle(
+      Castle(grid),
+      golden: 'Castle_1_1787098424630',
+      captured: DateTime.utc(2026, 8, 19, 1),
+    );
+    final second = CastleScanRun.fromCastle(
+      Castle(grid),
+      golden: 'test/fixtures/castles/Castle_1_1787098424630.json',
+      captured: DateTime.utc(2026, 8, 19, 2),
+    );
+    expect(first.golden, second.golden);
+    expect(first.jsonFileName, isNot(second.jsonFileName));
+  });
+
+  test('looksLikeFixtureGolden requires a timestamp suffix', () {
+    expect(
+      CastleScanRun.looksLikeFixtureGolden('Castle_4_1787107868285.json'),
+      isTrue,
+    );
+    expect(CastleScanRun.looksLikeFixtureGolden('Castle_4.json'), isFalse);
+    expect(CastleScanRun.looksLikeFixtureGolden('TBD.json'), isFalse);
+  });
+
+  test('scan export suggests placeholder until a fixture golden is linked', () {
+    final grid = GridList<Tile>(3, [
+      helper.getTileById(TileId.ThroneRoomPerCorridorDownstairs),
+      Placeholder(),
+      Empty(),
+    ]);
+    final castle = Castle(grid);
+    expect(
+      CastleFixtureExport.suggestedScanGolden(castle),
+      CastleScanRun.placeholderGolden,
+    );
+
+    castle.hiveCastle = HiveCastle(
+      title: 'Castle 5',
+      debugGoldenJson: 'Castle_5_1787123456789.json',
+    );
+    expect(
+      CastleFixtureExport.suggestedScanGolden(castle),
+      'Castle_5_1787123456789.json',
+    );
   });
 
   test('scan json round-trips across a merged token row', () {

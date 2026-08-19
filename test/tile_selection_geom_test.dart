@@ -12,7 +12,7 @@ void main() {
         boundsRect: Rect.fromLTWH(0, 0, 1000, 1200),
       );
       expect(cal.tileWidth, 100);
-      expect(cal.tileHeight, 80);
+      expect(cal.tileHeight, 100);
       expect(
         cal.cellAtImagePoint(const Offset(150, 240)),
         const GridCell(0, 0),
@@ -84,6 +84,28 @@ void main() {
       expect(r.width, closeTo(cal.tileWidth * 8, 2));
       expect(r.height, closeTo(cal.tileWidth * 8, 2));
       expect(r.contains(cal.cellCenter(const GridCell(0, 0))), isTrue);
+    });
+
+    test('remapMarkedCells is identity when calibration is unchanged', () {
+      const cal = TileSelectionCalibration(
+        imagePath: 'x.jpg',
+        throneRect: Rect.fromLTWH(400, 400, 200, 80),
+        boundsRect: Rect.fromLTWH(0, 0, 2000, 1600),
+      );
+      final marked = {
+        const GridCell(0, 0),
+        const GridCell(1, 0),
+        const GridCell(-4, 0),
+        const GridCell(-1, -2),
+      };
+      expect(
+        TileSelectionCalibration.remapMarkedCells(
+          marked: marked,
+          from: cal,
+          to: cal,
+        ),
+        marked,
+      );
     });
   });
 }

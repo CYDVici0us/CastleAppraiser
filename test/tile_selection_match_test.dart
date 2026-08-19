@@ -78,7 +78,7 @@ void main() {
     expect(tokens.where((t) => t.isBonusCard()).length, 1);
   });
 
-  test('pickGuessForCell prefers the nearest room tile', () {
+  test('pickGuessForCell prefers the box that covers the cell', () {
     final picked = pickGuessForCell(
       [
         g(label: TileLabels.KITCHEN, x: 200, y: 400),
@@ -88,6 +88,43 @@ void main() {
       cal,
     );
     expect(picked?.label, TileLabels.LOFT);
+  });
+
+  test('pickGuessForCell does not steal a neighbor via nearest-center', () {
+    final picked = pickGuessForCell(
+      [
+        g(label: TileLabels.KITCHEN, x: 305, y: 405),
+      ],
+      const GridCell(2, 0),
+      cal,
+      marked: {
+        const GridCell(0, 0),
+        const GridCell(1, 0),
+        const GridCell(-1, 0),
+        const GridCell(2, 0),
+      },
+    );
+    expect(picked, isNull);
+  });
+
+  test('assignGuessesToMarkedCells puts a unique room on the better-covered cell', () {
+    final marked = {
+      const GridCell(0, 0),
+      const GridCell(1, 0),
+      const GridCell(-1, 0),
+      const GridCell(2, 0),
+    };
+    // Kitchen box sits on the west cell, not the far east cell.
+    final assigned = assignGuessesToMarkedCells(
+      guesses: [
+        g(label: TileLabels.TRCD, x: 400, y: 400, w: 200, h: 80),
+        g(label: TileLabels.KITCHEN, x: 305, y: 405, score: 0.95),
+      ],
+      marked: marked,
+      calibration: cal,
+    );
+    expect(assigned[const GridCell(-1, 0)]?.label, TileLabels.KITCHEN);
+    expect(assigned.containsKey(const GridCell(2, 0)), isFalse);
   });
 
   test('assignGuessesToMarkedCells uses box coverage not just center', () {
@@ -135,10 +172,54 @@ void main() {
 
   test('coverageOfCell is high when the box fills the cell', () {
     final cov = coverageOfCell(
-      g(label: TileLabels.KITCHEN, x: 300, y: 400, w: 100, h: 80),
+      g(label: TileLabels.KITCHEN, x: 300, y: 400, w: 100, h: 100),
       const GridCell(-1, 0),
       cal,
     );
     expect(cov, greaterThan(0.9));
+  });
+
+  test('assignGuessesToMarkedCells skips a unique room that straddles two cells', () {
+    final marked = {
+      const GridCell(0, 0),
+      const GridCell(1, 0),
+      const GridCell(-2, 0),
+      const GridCell(-1, 0),
+    };
+    final assigned = assignGuessesToMarkedCells(
+      guesses: [
+        g(label: TileLabels.TRCD, x: 400, y: 400, w: 200, h: 80),
+        g(label: TileLabels.KITCHEN, x: 255, y: 400, w: 100, h: 80),
+      ],
+      marked: marked,
+      calibration: cal,
+    );
+    expect(assigned[const GridCell(-2, 0)], isNull);
+    expect(assigned[const GridCell(-1, 0)], isNull);
+  });
+
+  test('refineCalibrationFromGuesses recovers a west-wing cell from a fat throne', () {
+    const fat = TileSelectionCalibration(
+      imagePath: 'x.jpg',
+      throneRect: Rect.fromLTWH(380, 400, 240, 80),
+      boundsRect: Rect.fromLTWH(0, 0, 2000, 1600),
+    );
+    expect(
+      fat.cellAtImagePoint(const Offset(50, 440), requireInBounds: false),
+      const GridCell(-3, 0),
+    );
+
+    final refined = refineCalibrationFromGuesses(fat, [
+      g(label: TileLabels.TRCF, x: 380, y: 400, w: 240, h: 80),
+      g(label: TileLabels.FIREWOOD_STORAGE, x: 5, y: 400, w: 90, h: 80),
+      g(label: TileLabels.TERRACE, x: 205, y: 400, w: 90, h: 80),
+      g(label: TileLabels.LOUNGE, x: 305, y: 400, w: 90, h: 80),
+      g(label: TileLabels.AMONG_THE_CURTAINS, x: 605, y: 400, w: 90, h: 80),
+      g(label: TileLabels.TAPESTRY_ROOM, x: 705, y: 400, w: 90, h: 80),
+    ]);
+    expect(
+      refined.cellAtImagePoint(const Offset(50, 440), requireInBounds: false),
+      const GridCell(-4, 0),
+    );
   });
 }

@@ -255,16 +255,38 @@ class _GameEditScreenState extends State<GameEditScreen> {
     renameCastleCallback: _renameCastle,
     editCastleCallback: _editCastle,
     exportCastleCallback: kDebugMode ? _exportCastle : null,
+    exportScanCallback: kDebugMode ? _exportScan : null,
     getCastleColorCallback: _getCastleItemColor,
   );
 
   Future<void> _exportCastle(Castle castle) async {
     try {
-      await CastleFixtureExport.share(castle);
+      final golden = await CastleFixtureExport.share(castle);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Golden $golden — re-export scan to link it, or edit "golden" '
+            'in an existing scan JSON.',
+          ),
+          duration: const Duration(seconds: 6),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Could not export fixture: $e')),
+      );
+    }
+  }
+
+  Future<void> _exportScan(Castle castle) async {
+    try {
+      await CastleFixtureExport.promptAndShareScan(context, castle);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not export scan: $e')),
       );
     }
   }

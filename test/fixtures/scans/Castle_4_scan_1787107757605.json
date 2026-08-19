@@ -1,0 +1,193 @@
+{
+  "golden": "Castle_4_1787107868285.json",
+  "captured": "2026-08-19T02:49:17.605340Z",
+  "workflow": "grid",
+  "expectedRooms": 13,
+  "occupied": [
+    [
+      1,
+      -3
+    ],
+    [
+      1,
+      -2
+    ],
+    [
+      -1,
+      -1
+    ],
+    [
+      0,
+      -1
+    ],
+    [
+      1,
+      -1
+    ],
+    [
+      2,
+      -1
+    ],
+    [
+      -4,
+      0
+    ],
+    [
+      -2,
+      0
+    ],
+    [
+      -1,
+      0
+    ],
+    [
+      0,
+      0
+    ],
+    [
+      1,
+      0
+    ],
+    [
+      2,
+      0
+    ],
+    [
+      1,
+      1
+    ],
+    [
+      1,
+      2
+    ],
+    [
+      1,
+      3
+    ]
+  ],
+  "labels": {
+    "1,-3": "LOCKDOWN_ROOM",
+    "1,-2": "BUTTERY",
+    "-1,-1": "GAME_STORAGE",
+    "0,-1": "BEYOND_THE_PAIL",
+    "1,-1": "HALL_OF_EVER_CLOSING_WALLS",
+    "2,-1": "PILLOW_ROOM",
+    "-4,0": "FIREWOOD_STORAGE",
+    "-2,0": "MEDITATION_ROOM",
+    "-1,0": "TERRACE",
+    "0,0": "TRCF",
+    "2,0": "AMONG_THE_CURTAINS",
+    "1,1": "GUNPOWDER_ROOM",
+    "1,2": "PIT_OF_DESPAIR",
+    "1,3": "SNAKE_PIT"
+  },
+  "bonus": [],
+  "attendants": [
+    "RAS",
+    "RAS"
+  ],
+  "scan": {
+    "-1,-1": {
+      "score": 0.27369205319934586,
+      "coverage": 0.7512926326987038,
+      "unidentified": false,
+      "level": "medium"
+    },
+    "-1,-2": {
+      "score": 0.0,
+      "coverage": 0.0,
+      "unidentified": true,
+      "level": "unidentified"
+    },
+    "-1,0": {
+      "score": 0.988181206656666,
+      "coverage": 0.21994646514281063,
+      "unidentified": false,
+      "level": "medium"
+    },
+    "-2,0": {
+      "score": 0.9062305422168961,
+      "coverage": 0.36112891872869285,
+      "unidentified": false,
+      "level": "medium"
+    },
+    "-3,0": {
+      "score": 0.0,
+      "coverage": 0.0,
+      "unidentified": true,
+      "level": "unidentified"
+    },
+    "-4,0": {
+      "score": 0.963322662874301,
+      "coverage": 0.10651208205888374,
+      "unidentified": false,
+      "level": "medium"
+    },
+    "0,-1": {
+      "score": 0.9485367524821129,
+      "coverage": 0.7689382599281521,
+      "unidentified": false,
+      "level": "high"
+    },
+    "0,0": {
+      "score": 0.5066728256676392,
+      "coverage": 0.010266633883867417,
+      "unidentified": false,
+      "level": "medium"
+    },
+    "1,-1": {
+      "score": 0.9713550437990577,
+      "coverage": 0.8323441408134162,
+      "unidentified": false,
+      "level": "high"
+    },
+    "1,-2": {
+      "score": 0.9882659710773041,
+      "coverage": 0.6623912884976793,
+      "unidentified": false,
+      "level": "high"
+    },
+    "1,-3": {
+      "score": 0.9803701339628503,
+      "coverage": 0.5215253553741775,
+      "unidentified": false,
+      "level": "high"
+    },
+    "1,1": {
+      "score": 0.9925984604716689,
+      "coverage": 0.7624551901032876,
+      "unidentified": false,
+      "level": "high"
+    },
+    "1,2": {
+      "score": 0.6967679927733883,
+      "coverage": 0.6982644498010758,
+      "unidentified": false,
+      "level": "high"
+    },
+    "1,3": {
+      "score": 0.9964309045799098,
+      "coverage": 0.6764249981504704,
+      "unidentified": false,
+      "level": "high"
+    },
+    "2,-1": {
+      "score": 0.8989869307392908,
+      "coverage": 0.8736702582732747,
+      "unidentified": false,
+      "level": "high"
+    },
+    "2,0": {
+      "score": 0.7838985585524583,
+      "coverage": 0.8304339505819623,
+      "unidentified": false,
+      "level": "high"
+    },
+    "3,0": {
+      "score": 0.0,
+      "coverage": 0.0,
+      "unidentified": true,
+      "level": "unidentified"
+    }
+  }
+}

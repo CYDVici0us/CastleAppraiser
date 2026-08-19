@@ -1,0 +1,197 @@
+{
+  "golden": "Castle_3_1787107538933.json",
+  "captured": "2026-08-19T04:04:00.383332Z",
+  "workflow": "grid",
+  "expectedRooms": 12,
+  "occupied": [
+    [
+      0,
+      -4
+    ],
+    [
+      1,
+      -4
+    ],
+    [
+      0,
+      -3
+    ],
+    [
+      1,
+      -3
+    ],
+    [
+      0,
+      -1
+    ],
+    [
+      1,
+      -1
+    ],
+    [
+      3,
+      -1
+    ],
+    [
+      -2,
+      0
+    ],
+    [
+      0,
+      0
+    ],
+    [
+      1,
+      0
+    ],
+    [
+      2,
+      0
+    ],
+    [
+      3,
+      0
+    ],
+    [
+      1,
+      1
+    ],
+    [
+      1,
+      3
+    ]
+  ],
+  "labels": {
+    "0,-4": "AROUND_THE_CORNER",
+    "1,-4": "TOWER",
+    "0,-3": "COLONNADE",
+    "1,-3": "BLANKET_ROOM",
+    "0,-1": "BRD",
+    "1,-1": "SOLAR",
+    "3,-1": "BUNK_ROOM",
+    "-2,0": "SITTING_ROOM",
+    "0,0": "TRUS",
+    "2,0": "DUMBWAITER",
+    "3,0": "PIANO_ROOM",
+    "1,1": "THE_HOLE",
+    "1,3": "CRYPT"
+  },
+  "bonus": [],
+  "attendants": [],
+  "scan": {
+    "-1,0": {
+      "score": 0.0,
+      "coverage": 0.0,
+      "unidentified": true,
+      "level": "unidentified"
+    },
+    "-2,0": {
+      "score": 0.965528789394785,
+      "coverage": 0.449143215007224,
+      "unidentified": false,
+      "level": "high"
+    },
+    "0,-1": {
+      "score": 0.9911510618777939,
+      "coverage": 0.8299421835830637,
+      "unidentified": false,
+      "level": "high"
+    },
+    "0,-2": {
+      "score": 0.0,
+      "coverage": 0.0,
+      "unidentified": true,
+      "level": "unidentified"
+    },
+    "0,-3": {
+      "score": 0.4866277464384048,
+      "coverage": 0.543541480456473,
+      "unidentified": false,
+      "level": "high"
+    },
+    "0,-4": {
+      "score": 0.993017229666215,
+      "coverage": 0.6062528428660725,
+      "unidentified": false,
+      "level": "high"
+    },
+    "0,0": {
+      "score": 0.9846688380564217,
+      "coverage": 0.012061026937206936,
+      "unidentified": false,
+      "level": "medium"
+    },
+    "1,-1": {
+      "score": 0.970385629674702,
+      "coverage": 0.8580503771638412,
+      "unidentified": false,
+      "level": "high"
+    },
+    "1,-2": {
+      "score": 0.0,
+      "coverage": 0.0,
+      "unidentified": true,
+      "level": "unidentified"
+    },
+    "1,-3": {
+      "score": 0.9866418130911825,
+      "coverage": 0.8457648241500311,
+      "unidentified": false,
+      "level": "high"
+    },
+    "1,-4": {
+      "score": 0.9457818148748061,
+      "coverage": 0.759257051052694,
+      "unidentified": false,
+      "level": "high"
+    },
+    "1,1": {
+      "score": 0.32771988551582965,
+      "coverage": 0.7539122132664159,
+      "unidentified": false,
+      "level": "medium"
+    },
+    "1,2": {
+      "score": 0.0,
+      "coverage": 0.0,
+      "unidentified": true,
+      "level": "unidentified"
+    },
+    "1,3": {
+      "score": 0.9701472370559046,
+      "coverage": 0.6037847216939204,
+      "unidentified": false,
+      "level": "high"
+    },
+    "2,-1": {
+      "score": 0.0,
+      "coverage": 0.0,
+      "unidentified": true,
+      "level": "unidentified"
+    },
+    "2,-2": {
+      "score": 0.0,
+      "coverage": 0.0,
+      "unidentified": true,
+      "level": "unidentified"
+    },
+    "2,0": {
+      "score": 0.9935452232651905,
+      "coverage": 0.824073436070662,
+      "unidentified": false,
+      "level": "high"
+    },
+    "3,-1": {
+      "score": 0.9792703835190082,
+      "coverage": 0.9128131823123055,
+      "unidentified": false,
+      "level": "high"
+    },
+    "3,0": {
+      "score": 0.331884718868551,
+      "coverage": 0.7533514974485899,
+      "unidentified": false,
+      "level": "medium"
+    }
+  }
+}

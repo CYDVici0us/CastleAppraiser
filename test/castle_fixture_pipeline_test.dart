@@ -39,9 +39,9 @@ void main() {
     var anyFail = false;
 
     for (final jsonFile in jsonFiles) {
-      final golden = CastleFixture.fromJson(
-        jsonDecode(jsonFile.readAsStringSync()) as Map,
-      );
+      final raw = jsonDecode(jsonFile.readAsStringSync()) as Map;
+      if (CastleFixture.isScanDocument(raw)) continue;
+      final golden = CastleFixture.fromJson(raw);
       final imageFile = File('${dir.path}/${golden.image}');
       if (!imageFile.existsSync()) {
         reports.add('${golden.image}: missing JPEG beside JSON');

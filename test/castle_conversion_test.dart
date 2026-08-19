@@ -169,6 +169,70 @@ void main() {
         samples: [(0, -1, 130.0, 180.0)],
       );
       expect(refined.originX, isNot(100));
+      expect(refined.tileW, 50);
+    });
+
+    test('refinePitch shrinks a fat throne so west rooms keep their cell', () {
+      const fat = ThroneAnchoredLattice(
+        originX: 380,
+        originY: 400,
+        tileW: 120,
+        tileH: 80,
+      );
+      // True pitch is 100, origin 400. Centers of gx -4,-2,-1,2,3.
+      const centers = <(double cx, double cy)>[
+        (50, 440),
+        (250, 440),
+        (350, 440),
+        (650, 440),
+        (750, 440),
+      ];
+      expect(fat.cellForCenter(50, 440), ( -3, 0 ));
+
+      final samples = [
+        for (final c in centers)
+          (
+            fat.cellForCenter(c.$1, c.$2).$1,
+            fat.cellForCenter(c.$1, c.$2).$2,
+            c.$1,
+            c.$2,
+          ),
+      ];
+      final refined = fat.refinePitch(samples: samples);
+      expect(refined.cellForCenter(50, 440), ( -4, 0 ));
+      expect(refined.cellForCenter(250, 440), ( -2, 0 ));
+      expect(refined.cellForCenter(350, 440), ( -1, 0 ));
+      expect(refined.cellForCenter(650, 440), ( 2, 0 ));
+    });
+
+    test('refinePitch corrects vertical tileH from multi-row detections', () {
+      // Wizard estimates tileH = 80, but true vertical pitch is 100.
+      // Two rows of detections at gy=0 and gy=-1 give enough vertical pairs.
+      const lat = ThroneAnchoredLattice(
+        originX: 400,
+        originY: 400,
+        tileW: 100,
+        tileH: 80,
+      );
+
+      // Ground row (gy=0): centers at y=440 (400 + 0.5*80)
+      // Row above (gy=-1): true y should be 300 (400 - 100 + 50) but with
+      // tileH=80 the lattice puts gy=-1 at y=360. Detections land at true
+      // positions so their centers are at y=350 (= 400 - 100 + 50).
+      final samples = <(int, int, double, double)>[
+        // gy=0 rooms
+        (lat.cellForCenter(450, 440).$1, lat.cellForCenter(450, 440).$2, 450, 440),
+        (lat.cellForCenter(550, 440).$1, lat.cellForCenter(550, 440).$2, 550, 440),
+        (lat.cellForCenter(650, 440).$1, lat.cellForCenter(650, 440).$2, 650, 440),
+        // gy=-1 rooms (true y center = 350)
+        (lat.cellForCenter(450, 350).$1, lat.cellForCenter(450, 350).$2, 450, 350),
+        (lat.cellForCenter(550, 350).$1, lat.cellForCenter(550, 350).$2, 550, 350),
+      ];
+
+      final refined = lat.refinePitch(samples: samples);
+      // Vertical pitch should be closer to ~90-100 rather than the original 80.
+      expect(refined.tileH, greaterThan(85));
+      expect(refined.tileH, lessThanOrEqualTo(100));
     });
   });
 

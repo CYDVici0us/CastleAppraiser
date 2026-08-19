@@ -60,14 +60,16 @@ class Castle {
   Castle.fromHiveCastle(HiveCastle hiveCastle) {
     this.hiveCastle = hiveCastle;
     this.title = hiveCastle.title ?? 'Castle';
-    _initFromGridList(TokenTileGrid.replaceGapFillingTokensWithEmpty(
-      GridList<Tile>(
-        hiveCastle.tileWidth!,
-        TileHelper().getListOfTilesFromIds(hiveCastle.tiles!),
-      ),
+    final raw = GridList<Tile>(
+      hiveCastle.tileWidth!,
+      TileHelper().getListOfTilesFromIds(hiveCastle.tiles!),
+    );
+    final grid = TokenTileGrid.canonicalizeForPersistence(
+      raw,
       getEmpty: () => Empty(),
-    ));
-    cellGuesses = decodeCellGuessesJson(castleTiles, hiveCastle.scanGuessJson);
+    );
+    _initFromGridList(grid);
+    cellGuesses = decodeCellGuessesJson(grid, hiveCastle.scanGuessJson);
   }
 
   void _initFromGridList(GridList<Tile> castleTiles) {

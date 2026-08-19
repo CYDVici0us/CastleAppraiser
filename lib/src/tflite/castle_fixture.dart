@@ -1,8 +1,6 @@
 import 'dart:convert';
 
 import 'package:btcc/src/models/exports.dart';
-import 'package:btcc/src/tflite/cell_guess_info.dart';
-import 'package:btcc/src/tflite/cell_guess_remap.dart';
 import 'package:btcc/src/tflite/tflite_helper.dart';
 import 'package:btcc/src/utils/grid_expander.dart';
 import 'package:btcc/src/utils/tile_helper.dart';
@@ -16,6 +14,9 @@ import 'package:btcc/src/utils/token_tile_grid.dart';
 ///
 /// Bonus cards and royal attendants are listed separately — they live on the
 /// token strip, not in the room lattice.
+///
+/// Detector passes are [CastleScanRun] files that reference this golden by
+/// basename; they live under `test/fixtures/scans/`.
 class CastleFixture {
   final String image;
   final String source;
@@ -24,8 +25,6 @@ class CastleFixture {
   final Map<String, String> labels;
   final List<String> bonus;
   final List<String> attendants;
-  /// Debug scan confidence keyed like [labels] (`"gx,gy"`).
-  final Map<String, CellGuessInfo> scan;
 
   const CastleFixture({
     required this.image,
@@ -35,7 +34,6 @@ class CastleFixture {
     required this.labels,
     this.bonus = const [],
     this.attendants = const [],
-    this.scan = const {},
   });
 
   static const String sourceAsset = 'asset';
@@ -48,6 +46,11 @@ class CastleFixture {
     return '$stem.json';
   }
 
+  static String stemOf(String filename) => _stem(filename);
+
+  /// Scan-run JSON references a golden via `golden`; occupancy goldens do not.
+  static bool isScanDocument(Map json) => json['golden'] is String;
+
   static String _stem(String filename) {
     final slash = filename.replaceAll('\\', '/').split('/').last;
     final dot = slash.lastIndexOf('.');
@@ -55,24 +58,15 @@ class CastleFixture {
     return slash.substring(0, dot);
   }
 
-  Map<String, Object?> toJson() {
-    final json = <String, Object?>{
-      'image': image,
-      'source': source,
-      'expectedRooms': expectedRooms,
-      'occupied': occupied,
-      'labels': labels,
-      'bonus': bonus,
-      'attendants': attendants,
-    };
-    if (scan.isNotEmpty) {
-      final keys = scan.keys.toList()..sort();
-      json['scan'] = {
-        for (final key in keys) key: scan[key]!.toJson(),
+  Map<String, Object?> toJson() => {
+        'image': image,
+        'source': source,
+        'expectedRooms': expectedRooms,
+        'occupied': occupied,
+        'labels': labels,
+        'bonus': bonus,
+        'attendants': attendants,
       };
-    }
-    return json;
-  }
 
   String toPrettyJson() => const JsonEncoder.withIndent('  ').convert(toJson());
 
@@ -100,20 +94,7 @@ class CastleFixture {
         for (final v in json['attendants'] as List<dynamic>? ?? const [])
           v.toString(),
       ],
-      scan: _scanFromJson(json['scan']),
     );
-  }
-
-  static Map<String, CellGuessInfo> _scanFromJson(Object? raw) {
-    if (raw is! Map) return const {};
-    final out = <String, CellGuessInfo>{};
-    for (final e in raw.entries) {
-      final value = e.value;
-      if (value is Map) {
-        out[e.key.toString()] = CellGuessInfo.fromJson(value);
-      }
-    }
-    return out;
   }
 
   /// Build a fixture from an edited castle grid.
@@ -176,13 +157,6 @@ class CastleFixture {
       labels: labels,
       bonus: bonus,
       attendants: attendants,
-      scan: {
-        for (final e in cellGuessesToThroneMap(
-          castle.castleTiles,
-          castle.cellGuesses,
-        ).entries)
-          e.key: CellGuessInfo.fromJson(e.value),
-      },
     );
   }
 

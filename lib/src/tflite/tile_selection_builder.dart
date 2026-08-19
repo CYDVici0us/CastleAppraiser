@@ -45,20 +45,6 @@ class TileSelectionBuilder {
         'tile=${calibration.tileWidth.toStringAsFixed(1)}x'
         '${calibration.tileHeight.toStringAsFixed(1)}');
 
-    final bounds = TileSelectionCalibration.gridBounds(marked);
-    final grid = GridList<Tile>(
-      bounds.width,
-      TfliteHelper.createEmptyTileList(bounds.width, bounds.height),
-    );
-    final guessInfo = <int, CellGuessInfo>{};
-
-    final toClassify = marked.where((c) => !c.isThroneOrPlaceholder).toList()
-      ..sort((a, b) => a.y == b.y ? a.x.compareTo(b.x) : a.y.compareTo(b.y));
-    toClassify.insert(0, const GridCell(0, 0));
-
-    final total = toClassify.length;
-    onProgress?.call(0, total);
-
     final detectRect = _castleDetectRect(calibration, decoded);
     final castleGuesses = await WindowedDetect.detectCastleWindows(
       store: store,
@@ -68,10 +54,38 @@ class TileSelectionBuilder {
       tileH: calibration.tileHeight,
     );
 
+    final cal = refineCalibrationFromGuesses(calibration, castleGuesses);
+    final markedCells = TileSelectionCalibration.remapMarkedCells(
+      marked: marked,
+      from: calibration,
+      to: cal,
+    );
+    if (cal.throneRect != calibration.throneRect) {
+      log('tile selection refined tile='
+          '${cal.tileWidth.toStringAsFixed(1)}x${cal.tileHeight.toStringAsFixed(1)} '
+          '(was ${calibration.tileWidth.toStringAsFixed(1)}x'
+          '${calibration.tileHeight.toStringAsFixed(1)}); '
+          'marked ${marked.length} → ${markedCells.length}');
+    }
+
+    final bounds = TileSelectionCalibration.gridBounds(markedCells);
+    final grid = GridList<Tile>(
+      bounds.width,
+      TfliteHelper.createEmptyTileList(bounds.width, bounds.height),
+    );
+    final guessInfo = <int, CellGuessInfo>{};
+
+    final toClassify = markedCells.where((c) => !c.isThroneOrPlaceholder).toList()
+      ..sort((a, b) => a.y == b.y ? a.x.compareTo(b.x) : a.y.compareTo(b.y));
+    toClassify.insert(0, const GridCell(0, 0));
+
+    final total = toClassify.length;
+    onProgress?.call(0, total);
+
     final assigned = assignGuessesToMarkedCells(
       guesses: castleGuesses,
-      marked: marked,
-      calibration: calibration,
+      marked: markedCells,
+      calibration: cal,
     );
     log('tile selection assigned ${assigned.length}/$total '
         '(${castleGuesses.length} detections)');
@@ -91,9 +105,9 @@ class TileSelectionBuilder {
       var guess = assigned[cell];
       var cov = guess == null
           ? 0.0
-          : coverageOfCell(guess, cell, calibration);
+          : coverageOfCell(guess, cell, cal);
       if (guess == null || cov < kMinCellCoverage) {
-        final ctx = calibration.scoringContextRect(
+        final ctx = cal.scoringContextRect(
           cell,
           imageW: decoded.width,
           imageH: decoded.height,
@@ -102,13 +116,20 @@ class TileSelectionBuilder {
         guess = pickGuessForCell(
               ctxGuesses,
               cell,
-              calibration,
+              cal,
               usedCopies: usedCopies,
+              marked: markedCells,
             ) ??
             guess;
         if (guess != null) {
-          cov = coverageOfCell(guess, cell, calibration);
+          cov = coverageOfCell(guess, cell, cal);
         }
+      }
+      if (cell.x != 0 &&
+          guess != null &&
+          cov < kMinCellCoverage) {
+        guess = null;
+        cov = 0;
       }
 
       if (cell.x == 0 && cell.y == 0) {
@@ -135,14 +156,59 @@ class TileSelectionBuilder {
             guessInfo[idx] = CellGuessInfo.unidentifiedCell();
           }
         }
-      } else if (marked.contains(cell)) {
+      } else if (markedCells.contains(cell)) {
         grid.items[idx] = Empty();
         guessInfo[idx] = CellGuessInfo.unidentifiedCell();
       }
       done++;
     }
 
-    if (marked.contains(const GridCell(1, 0))) {
+    final emptyMarked = <GridCell>{};
+    for (final cell in markedCells) {
+      if (cell.isThroneOrPlaceholder) continue;
+      final localX = cell.x - bounds.minX;
+      final localY = cell.y - bounds.minY;
+      final idx = localY * bounds.width + localX;
+      if (idx >= 0 &&
+          idx < grid.items.length &&
+          grid.items[idx].isEmpty()) {
+        emptyMarked.add(cell);
+      }
+    }
+    if (emptyMarked.isNotEmpty) {
+      final refill = assignGuessesToMarkedCells(
+        guesses: castleGuesses,
+        marked: {
+          ...emptyMarked,
+          const GridCell(0, 0),
+          const GridCell(1, 0),
+        },
+        calibration: cal,
+        usedCopies: usedCopies,
+      );
+      for (final e in refill.entries) {
+        if (e.key.isThroneOrPlaceholder) continue;
+        final cell = e.key;
+        final guess = e.value;
+        final localX = cell.x - bounds.minX;
+        final localY = cell.y - bounds.minY;
+        final idx = localY * bounds.width + localX;
+        if (idx < 0 || idx >= grid.items.length) continue;
+        if (!grid.items[idx].isEmpty()) continue;
+        final already = usedCopies[guess.label] ?? 0;
+        if (already >= TfliteHelper.maxCopiesForLabel(guess.label)) continue;
+        final tile = TileGuessPlacement.tryGetTile(guess, grid.items);
+        if (tile == null) continue;
+        grid.items[idx] = tile;
+        guessInfo[idx] = TileGuessPlacement.infoFromGuess(
+          guess: guess,
+          coverage: coverageOfCell(guess, cell, cal),
+        );
+        usedCopies[guess.label] = already + 1;
+      }
+    }
+
+    if (markedCells.contains(const GridCell(1, 0))) {
       final phIdx = (0 - bounds.minY) * bounds.width + (1 - bounds.minX);
       if (phIdx >= 0 && phIdx < grid.items.length) {
         grid.items[phIdx] = Placeholder();

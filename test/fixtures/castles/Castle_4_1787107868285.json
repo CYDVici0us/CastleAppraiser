@@ -1,0 +1,103 @@
+{
+  "image": "Castle_4_1787107868285.jpg",
+  "source": "photo",
+  "expectedRooms": 16,
+  "occupied": [
+    [
+      1,
+      -3
+    ],
+    [
+      -1,
+      -2
+    ],
+    [
+      1,
+      -2
+    ],
+    [
+      -1,
+      -1
+    ],
+    [
+      0,
+      -1
+    ],
+    [
+      1,
+      -1
+    ],
+    [
+      2,
+      -1
+    ],
+    [
+      -4,
+      0
+    ],
+    [
+      -3,
+      0
+    ],
+    [
+      -2,
+      0
+    ],
+    [
+      -1,
+      0
+    ],
+    [
+      0,
+      0
+    ],
+    [
+      1,
+      0
+    ],
+    [
+      2,
+      0
+    ],
+    [
+      3,
+      0
+    ],
+    [
+      1,
+      1
+    ],
+    [
+      1,
+      2
+    ],
+    [
+      1,
+      3
+    ]
+  ],
+  "labels": {
+    "1,-3": "LOCKDOWN_ROOM",
+    "-1,-2": "OBSERVATORY",
+    "1,-2": "BUTTERY",
+    "-1,-1": "GAME_STORAGE",
+    "0,-1": "BEYOND_THE_PAIL",
+    "1,-1": "HALL_OF_EVER_CLOSING_WALLS",
+    "2,-1": "PILLOW_ROOM",
+    "-4,0": "FIREWOOD_STORAGE",
+    "-3,0": "MEDITATION_ROOM",
+    "-2,0": "TERRACE",
+    "-1,0": "LOUNGE",
+    "0,0": "TRCF",
+    "2,0": "AMONG_THE_CURTAINS",
+    "3,0": "TAPESTRY_ROOM",
+    "1,1": "GUNPOWDER_ROOM",
+    "1,2": "PIT_OF_DESPAIR",
+    "1,3": "SNAKE_PIT"
+  },
+  "bonus": [],
+  "attendants": [
+    "RAS",
+    "RAS"
+  ]
+}

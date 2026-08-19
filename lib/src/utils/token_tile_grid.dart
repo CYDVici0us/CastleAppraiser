@@ -222,6 +222,62 @@ class TokenTileGrid {
     return GridList<Tile>(grid.width, items);
   }
 
+  /// Normalize token layout before Hive save / after load.
+  ///
+  /// Scattered bonus/attendant tiles move onto the leading strip (or a new
+  /// strip is prepended). Does not grow the grid when row 0 is already a strip.
+  static GridList<Tile> canonicalizeForPersistence(
+    GridList<Tile> grid, {
+    required Tile Function() getEmpty,
+  }) {
+    final working = replaceGapFillingTokensWithEmpty(grid, getEmpty: getEmpty);
+    final hadStripRow = _hasLeadingStripRow(working);
+    final extracted = extractTokenTiles(working, getEmpty: getEmpty);
+
+    if (hadStripRow) {
+      final items = List<Tile>.from(extracted.structural.items);
+      var ti = 0;
+      for (var x = 0; x < working.width && ti < extracted.tokens.length; x++) {
+        if (items[x].isEmpty()) {
+          items[x] = extracted.tokens[ti++];
+        }
+      }
+      return GridList<Tile>(working.width, items);
+    }
+
+    return mergeTokenTilesIntoGrid(
+      extracted.structural,
+      extracted.tokens,
+      getEmpty: getEmpty,
+    );
+  }
+
+  /// Grid for list/thumbnail previews: canonical layout, rooms only (no strip).
+  static GridList<Tile> previewStructuralGrid(
+    GridList<Tile> grid, {
+    required Tile Function() getEmpty,
+  }) {
+    final canonical = canonicalizeForPersistence(grid, getEmpty: getEmpty);
+    return extractTokenTiles(canonical, getEmpty: getEmpty).structural;
+  }
+
+  /// Row 0 holds tokens and row 1+ holds castle rooms (ignores stray tokens).
+  static bool _hasLeadingStripRow(GridList<Tile> grid) {
+    if (grid.width <= 0 || grid.height < 2) return false;
+    var row0HasToken = false;
+    for (var x = 0; x < grid.width; x++) {
+      if (isTokenTile(grid.items[x])) row0HasToken = true;
+    }
+    if (!row0HasToken) return false;
+    for (var y = 1; y < grid.height; y++) {
+      for (var x = 0; x < grid.width; x++) {
+        final t = grid.items[x + y * grid.width];
+        if (!t.isEmpty() && !isTokenTile(t)) return true;
+      }
+    }
+    return false;
+  }
+
   /// Prepends a top row for [tokens] above [structural] so tokens sit above
   /// the structural perimeter and do not touch castle rooms.
   /// Tokens are left-aligned in that row.

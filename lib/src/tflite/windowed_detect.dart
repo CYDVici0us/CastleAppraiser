@@ -6,6 +6,7 @@ import 'package:btcc/src/tflite/castle_typical_extents.dart';
 import 'package:btcc/src/tflite/tflite_helper.dart';
 import 'package:btcc/src/tflite/tflite_objects.dart';
 import 'package:btcc/src/tflite/tile_selection_geom.dart';
+import 'package:btcc/src/tflite/tile_selection_match.dart';
 import 'package:image/image.dart' as img;
 
 /// Overlapping ~8×8-tile windows at model training scale.
@@ -52,24 +53,54 @@ class WindowedDetect {
   }
 
   /// Pre-mark grid cells from detections snapped to throne calibration.
+  /// A box can mark the cell its center lands in, and any other cell it
+  /// covers enough — fat/shifted boxes otherwise skip a true room.
   static Set<GridCell> seedMarkedCells({
     required List<TfliteProcessedGuess> guesses,
     required TileSelectionCalibration calibration,
     required Set<GridCell> alwaysMarked,
   }) {
     final marked = Set<GridCell>.from(alwaysMarked);
+    void consider(GridCell? cell, TfliteProcessedGuess g,
+        {required double minCoverage}) {
+      if (cell == null || cell.isThroneOrPlaceholder) return;
+      if (coverageOfCell(g, cell, calibration) >= minCoverage) {
+        marked.add(cell);
+      }
+    }
+
     for (final g in guesses) {
       if (TfliteHelper.isNonTile(g)) continue;
       if (TfliteHelper.isThroneRoom(g)) continue;
       final cx = (g.xMin + g.xMax) / 2;
       final cy = (g.yMin + g.yMax) / 2;
-      final cell = calibration.cellAtImagePoint(
+      final centerCell = calibration.cellAtImagePoint(
         Offset(cx, cy),
         requireInBounds: true,
       );
-      if (cell != null && !cell.isThroneOrPlaceholder) {
-        marked.add(cell);
-      }
+      final minCenterCoverage = (centerCell != null && centerCell.y < 0)
+          ? kAutoseedMinCenterCoverageTop
+          : kMinCellCoverage;
+      consider(centerCell, g, minCoverage: minCenterCoverage);
+
+      // Corner/edge samples: keep the stricter threshold to avoid marking
+      // phantom tiles below the castle silhouette.
+      consider(
+        calibration.cellAtImagePoint(
+          Offset(g.xMin, g.yMin),
+          requireInBounds: true,
+        ),
+        g,
+        minCoverage: kMinCellCoverage,
+      );
+      consider(
+        calibration.cellAtImagePoint(
+          Offset(g.xMax, g.yMax),
+          requireInBounds: true,
+        ),
+        g,
+        minCoverage: kMinCellCoverage,
+      );
     }
     return marked;
   }

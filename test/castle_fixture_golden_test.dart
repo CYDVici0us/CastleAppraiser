@@ -18,9 +18,9 @@ void main() {
         .listSync()
         .whereType<File>()
         .where((f) => f.path.toLowerCase().endsWith('.json'))
-        .map((f) => CastleFixture.fromJson(
-              jsonDecode(f.readAsStringSync()) as Map,
-            ))
+        .map((f) => jsonDecode(f.readAsStringSync()) as Map)
+        .where((json) => !CastleFixture.isScanDocument(json))
+        .map(CastleFixture.fromJson)
         .toList();
     expect(goldens, isNotEmpty);
   });
@@ -102,6 +102,39 @@ void main() {
         spanY,
         lessThanOrEqualTo(CastleTypicalExtents.verticalSpanMaxTiles),
         reason: '${g.image} is $spanY tiles tall',
+      );
+    }
+  });
+
+  test('scan fixtures point at existing goldens', () {
+    final scansDir = Directory('test/fixtures/scans');
+    expect(scansDir.existsSync(), isTrue);
+    final goldenNames = dir
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.toLowerCase().endsWith('.json'))
+        .map((f) => f.uri.pathSegments.last)
+        .toSet();
+
+    final scanFiles = scansDir
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.toLowerCase().endsWith('.json'))
+        .toList();
+    expect(scanFiles, isNotEmpty);
+
+    for (final file in scanFiles) {
+      final json = jsonDecode(file.readAsStringSync()) as Map;
+      expect(
+        CastleFixture.isScanDocument(json),
+        isTrue,
+        reason: '${file.path} should be a scan document',
+      );
+      final golden = json['golden'] as String;
+      expect(
+        goldenNames.contains(golden),
+        isTrue,
+        reason: '${file.path} golden "$golden" is missing from test/fixtures/castles',
       );
     }
   });

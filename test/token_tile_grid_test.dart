@@ -253,6 +253,30 @@ void main() {
       expect(result.structural.items[7].isEmpty(), isTrue);
     });
 
+    test('canonicalize moves stray bonus from a room cell onto the strip', () {
+      final merged = TokenTileGrid.mergeTokenTilesIntoGrid(
+        GridList<Tile>(4, [
+          Empty(), Empty(), Empty(), Empty(),
+          Empty(), ThroneRoomPerCorridorFood(), Placeholder(), Empty(),
+          Empty(), Empty(), Empty(), Empty(),
+        ]),
+        [BCPerFood()],
+        getEmpty: () => Empty(),
+      );
+      // Misplaced bonus in an empty room cell (not gap-filling beside the throne).
+      merged.items[11] = BCPerActivity();
+
+      final fixed = TokenTileGrid.canonicalizeForPersistence(
+        merged,
+        getEmpty: () => Empty(),
+      );
+
+      expect(fixed.height, merged.height);
+      expect(fixed.items[11].isEmpty(), isTrue);
+      expect(fixed.items[0].isBonusCard(), isTrue);
+      expect(fixed.items[1].isBonusCard(), isTrue);
+    });
+
     test('displayName humanizes specials and ball rooms', () {
       expect(
         TokenTileGrid.displayName(BallRoomPerUtility()),

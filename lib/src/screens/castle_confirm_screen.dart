@@ -4,11 +4,13 @@ import 'package:btcc/src/analytics/analytics.dart';
 import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/state/camera_store.dart';
 import 'package:btcc/src/tflite/cell_guess_info.dart';
+import 'package:btcc/src/tflite/cell_guess_remap.dart';
 import 'package:btcc/src/tflite/tflite_helper.dart';
 import 'package:btcc/src/utils/grid_expander.dart';
 import 'package:btcc/src/utils/navigation_helper.dart';
 import 'package:btcc/src/utils/orientation_helper.dart';
 import 'package:btcc/src/utils/tile_helper.dart';
+import 'package:btcc/src/utils/token_tile_grid.dart';
 import 'package:btcc/src/utils/typedefs.dart';
 import 'package:btcc/src/widgets/background_container.dart';
 import 'package:btcc/src/widgets/builder/tile_picker_sheet.dart';
@@ -53,11 +55,18 @@ class _CastleConfirmScreenState extends State<CastleConfirmScreen> {
   @override
   void initState() {
     super.initState();
-    _tiles = GridList(
-      widget.castleTiles.width,
-      List<Tile>.from(widget.castleTiles.items),
+    final throneGuesses = cellGuessesToThroneMap(
+      widget.castleTiles,
+      widget.cellGuesses ?? {},
     );
-    _guesses = Map<int, CellGuessInfo>.from(widget.cellGuesses ?? {});
+    _tiles = TokenTileGrid.canonicalizeForPersistence(
+      GridList(
+        widget.castleTiles.width,
+        List<Tile>.from(widget.castleTiles.items),
+      ),
+      getEmpty: () => Empty(),
+    );
+    _guesses = cellGuessesFromThroneMap(_tiles, throneGuesses);
   }
 
   int get _uncertainCount =>
@@ -370,8 +379,19 @@ class _CastleConfirmScreenState extends State<CastleConfirmScreen> {
                   icon: const Icon(Icons.check),
                   label: const Text('Yes'),
                   onPressed: () async {
-                    final castle = Castle(_tiles);
-                    castle.cellGuesses = Map<int, CellGuessInfo>.from(_guesses);
+                    final throneGuesses = cellGuessesToThroneMap(
+                      _tiles,
+                      _guesses,
+                    );
+                    final tiles = TokenTileGrid.canonicalizeForPersistence(
+                      _tiles,
+                      getEmpty: () => Empty(),
+                    );
+                    final castle = Castle(tiles);
+                    castle.cellGuesses = cellGuessesFromThroneMap(
+                      tiles,
+                      throneGuesses,
+                    );
                     await widget.addCastleCallback(
                       castle,
                       widget.imagePath ?? '',
