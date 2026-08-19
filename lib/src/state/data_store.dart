@@ -136,9 +136,9 @@ class DataStore extends ChangeNotifier {
   }
 
   Future<void> deleteGame(HiveGame game) async {
-    (game.castles ?? []).forEach((element) async {
-      await deleteCastle(element);
-    });
+    for (final castle in game.castles ?? <HiveCastle>[]) {
+      await deleteCastle(castle);
+    }
     await _gameBox.delete(game.key);
     _storedGames.remove(game);
     notifyListeners();
@@ -284,11 +284,11 @@ class DataStore extends ChangeNotifier {
         ? encodeCellGuessesJson(castle.castleTiles, castle.cellGuesses)
         : null;
 
-    addCastle(hiveCastle);
+    await addCastle(hiveCastle);
     game.hiveGame.castles!.add(hiveCastle);
 
     if (!game.hiveGame.isInBox) {
-      _gameBox.add(game.hiveGame);
+      await _gameBox.add(game.hiveGame);
       _storedGames.add(game.hiveGame);
     }
 
