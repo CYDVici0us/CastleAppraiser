@@ -1,0 +1,225 @@
+{
+  "golden": "Castle_5_1787120030256.json",
+  "captured": "2026-08-19T09:39:42.288119Z",
+  "workflow": "grid",
+  "expectedRooms": 14,
+  "occupied": [
+    [
+      -2,
+      -2
+    ],
+    [
+      -2,
+      -1
+    ],
+    [
+      0,
+      -1
+    ],
+    [
+      1,
+      -1
+    ],
+    [
+      2,
+      -1
+    ],
+    [
+      3,
+      -1
+    ],
+    [
+      -4,
+      0
+    ],
+    [
+      -3,
+      0
+    ],
+    [
+      -2,
+      0
+    ],
+    [
+      -1,
+      0
+    ],
+    [
+      0,
+      0
+    ],
+    [
+      1,
+      0
+    ],
+    [
+      2,
+      0
+    ],
+    [
+      3,
+      0
+    ],
+    [
+      4,
+      0
+    ],
+    [
+      5,
+      0
+    ]
+  ],
+  "labels": {
+    "-2,-2": "DRAWING_ROOM",
+    "-2,-1": "ICE_HOUSE",
+    "0,-1": "TASSO_ROOM",
+    "1,-1": "PROMENADE",
+    "2,-1": "DEAD_END",
+    "3,-1": "DINING_ROOM",
+    "-4,0": "MEDITATION_ROOM",
+    "-3,0": "TENNIS_COURT",
+    "-2,0": "FLUTE_ROOM",
+    "-1,0": "AVIARY",
+    "0,0": "TRUF",
+    "2,0": "CREPERY",
+    "3,0": "SAUERKRAUT_ROOM",
+    "4,0": "JAMMERY",
+    "5,0": "FOUNTAIN"
+  },
+  "bonus": [],
+  "attendants": [],
+  "scan": {
+    "-1,-1": {
+      "score": 0.0,
+      "coverage": 0.0,
+      "unidentified": true,
+      "level": "unidentified"
+    },
+    "-1,-2": {
+      "score": 0.0,
+      "coverage": 0.0,
+      "unidentified": true,
+      "level": "unidentified"
+    },
+    "-1,-3": {
+      "score": 0.0,
+      "coverage": 0.0,
+      "unidentified": true,
+      "level": "unidentified"
+    },
+    "-1,0": {
+      "score": 0.9901542782038177,
+      "coverage": 0.42793245426768495,
+      "unidentified": false,
+      "level": "high"
+    },
+    "-2,-1": {
+      "score": 0.9829106490945527,
+      "coverage": 0.6999216287019412,
+      "unidentified": false,
+      "level": "high"
+    },
+    "-2,-2": {
+      "score": 0.8985968698410183,
+      "coverage": 0.6200000424792933,
+      "unidentified": false,
+      "level": "high"
+    },
+    "-2,0": {
+      "score": 0.9560817328041367,
+      "coverage": 0.5591302994474824,
+      "unidentified": false,
+      "level": "high"
+    },
+    "-3,-1": {
+      "score": 0.0,
+      "coverage": 0.0,
+      "unidentified": true,
+      "level": "unidentified"
+    },
+    "-3,-2": {
+      "score": 0.0,
+      "coverage": 0.0,
+      "unidentified": true,
+      "level": "unidentified"
+    },
+    "-3,0": {
+      "score": 0.5263670436175794,
+      "coverage": 0.49913191113241945,
+      "unidentified": false,
+      "level": "high"
+    },
+    "-4,0": {
+      "score": 0.21412580000557746,
+      "coverage": 0.6881955595453206,
+      "unidentified": false,
+      "level": "low"
+    },
+    "0,-1": {
+      "score": 0.9783713576085589,
+      "coverage": 0.4853366153973709,
+      "unidentified": false,
+      "level": "high"
+    },
+    "0,-2": {
+      "score": 0.0,
+      "coverage": 0.0,
+      "unidentified": true,
+      "level": "unidentified"
+    },
+    "0,-3": {
+      "score": 0.0,
+      "coverage": 0.0,
+      "unidentified": true,
+      "level": "unidentified"
+    },
+    "0,0": {
+      "score": 0.9608880397968633,
+      "coverage": 0.011800355025374553,
+      "unidentified": false,
+      "level": "medium"
+    },
+    "1,-1": {
+      "score": 0.34816841339198845,
+      "coverage": 0.6249136930391498,
+      "unidentified": false,
+      "level": "medium"
+    },
+    "2,-1": {
+      "score": 0.952846383886687,
+      "coverage": 0.7565365060933672,
+      "unidentified": false,
+      "level": "high"
+    },
+    "2,0": {
+      "score": 0.3739882806994359,
+      "coverage": 0.5320618163722459,
+      "unidentified": false,
+      "level": "medium"
+    },
+    "3,-1": {
+      "score": 0.9715490345671896,
+      "coverage": 0.6696839872681846,
+      "unidentified": false,
+      "level": "high"
+    },
+    "3,0": {
+      "score": 0.9380171830921427,
+      "coverage": 0.6228841429757402,
+      "unidentified": false,
+      "level": "high"
+    },
+    "4,0": {
+      "score": 0.6131129723334894,
+      "coverage": 0.5658295276312252,
+      "unidentified": false,
+      "level": "high"
+    },
+    "5,0": {
+      "score": 0.9949697303576244,
+      "coverage": 0.5147407673305593,
+      "unidentified": false,
+      "level": "high"
+    }
+  }
+}

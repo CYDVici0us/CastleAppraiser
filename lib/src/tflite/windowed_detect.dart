@@ -20,6 +20,7 @@ class WindowedDetect {
     required double tileW,
     required double tileH,
     int strideTiles = 4,
+    void Function(int done, int total)? onProgress,
   }) async {
     final pitch = math.max(tileW, tileH);
     final windowSide = pitch * CastleTypicalExtents.baseWidthTypical;
@@ -27,8 +28,11 @@ class WindowedDetect {
       return _detectRegion(store, decoded, bounds);
     }
 
+    final minDim = pitch * 1.5;
     final stride = pitch * strideTiles;
-    final merged = <TfliteProcessedGuess>[];
+
+    // Pre-compute windows so we can report total count.
+    final windows = <Rect>[];
     for (var top = bounds.top;
         top < bounds.bottom - 8;
         top += stride) {
@@ -41,10 +45,19 @@ class WindowedDetect {
           math.min(windowSide, bounds.right - left),
           math.min(windowSide, bounds.bottom - top),
         );
-        final local = await _detectRegion(store, decoded, win);
-        merged.addAll(local);
+        if (win.width >= minDim && win.height >= minDim) {
+          windows.add(win);
+        }
       }
     }
+
+    final merged = <TfliteProcessedGuess>[];
+    for (var i = 0; i < windows.length; i++) {
+      onProgress?.call(i, windows.length);
+      final local = await _detectRegion(store, decoded, windows[i]);
+      merged.addAll(local);
+    }
+    onProgress?.call(windows.length, windows.length);
 
     if (merged.isEmpty) {
       return _detectRegion(store, decoded, bounds);

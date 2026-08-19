@@ -26,6 +26,9 @@ class TileSelectionBuilder {
     required Set<GridCell> marked,
     required TfStore store,
     void Function(int done, int total)? onProgress,
+    void Function(String phase)? onPhase,
+    List<TfliteProcessedGuess>? cachedGuesses,
+    img.Image? cachedDecoded,
   }) async {
     if (marked.isEmpty) {
       throw StateError('No tiles marked on the grid');
@@ -33,11 +36,16 @@ class TileSelectionBuilder {
 
     await store.prepareForScoring();
 
-    final expectedSize = await decodeImagePixelSize(calibration.imagePath);
-    final decoded = await decodeOrientedImage(
-      calibration.imagePath,
-      expectedSize: expectedSize,
-    );
+    final img.Image decoded;
+    if (cachedDecoded != null) {
+      decoded = cachedDecoded;
+    } else {
+      final expectedSize = await decodeImagePixelSize(calibration.imagePath);
+      decoded = await decodeOrientedImage(
+        calibration.imagePath,
+        expectedSize: expectedSize,
+      );
+    }
     if (decoded.width == 0 || decoded.height == 0) {
       throw StateError('Could not decode image for tile selection');
     }
@@ -45,14 +53,20 @@ class TileSelectionBuilder {
         'tile=${calibration.tileWidth.toStringAsFixed(1)}x'
         '${calibration.tileHeight.toStringAsFixed(1)}');
 
-    final detectRect = _castleDetectRect(calibration, decoded);
-    final castleGuesses = await WindowedDetect.detectCastleWindows(
-      store: store,
-      decoded: decoded,
-      bounds: detectRect,
-      tileW: calibration.tileWidth,
-      tileH: calibration.tileHeight,
-    );
+    final List<TfliteProcessedGuess> castleGuesses;
+    if (cachedGuesses != null) {
+      castleGuesses = cachedGuesses;
+    } else {
+      onPhase?.call('Scanning castle');
+      final detectRect = _castleDetectRect(calibration, decoded);
+      castleGuesses = await WindowedDetect.detectCastleWindows(
+        store: store,
+        decoded: decoded,
+        bounds: detectRect,
+        tileW: calibration.tileWidth,
+        tileH: calibration.tileHeight,
+      );
+    }
 
     final cal = refineCalibrationFromGuesses(calibration, castleGuesses);
     final markedCells = TileSelectionCalibration.remapMarkedCells(
@@ -90,9 +104,11 @@ class TileSelectionBuilder {
     log('tile selection assigned ${assigned.length}/$total '
         '(${castleGuesses.length} detections)');
 
+    onPhase?.call('Classifying tiles');
     var done = 0;
     final usedCopies = <Object, int>{};
     for (final cell in toClassify) {
+      await Future<void>.delayed(Duration.zero); // yield so UI can repaint
       onProgress?.call(done, total);
       final localX = cell.x - bounds.minX;
       final localY = cell.y - bounds.minY;
@@ -107,23 +123,31 @@ class TileSelectionBuilder {
           ? 0.0
           : coverageOfCell(guess, cell, cal);
       if (guess == null || cov < kMinCellCoverage) {
-        final ctx = cal.scoringContextRect(
-          cell,
-          imageW: decoded.width,
-          imageH: decoded.height,
-        );
-        final ctxGuesses = await _detectRegion(store, decoded, ctx);
-        guess = pickGuessForCell(
-              ctxGuesses,
-              cell,
-              cal,
-              usedCopies: usedCopies,
-              marked: markedCells,
-            ) ??
-            guess;
-        if (guess != null) {
-          cov = coverageOfCell(guess, cell, cal);
+        // Accept cached match at a relaxed threshold to avoid a costly
+        // per-cell inference when the detection is close but slightly under.
+        if (guess != null && cov >= kFallbackAcceptCoverage) {
+          // Keep the cached guess — good enough to skip the fallback crop.
+        } else if (_hasNearbyDetection(castleGuesses, cell, cal)) {
+          final ctx = cal.scoringContextRect(
+            cell,
+            imageW: decoded.width,
+            imageH: decoded.height,
+          );
+          final ctxGuesses = await _detectRegion(store, decoded, ctx);
+          guess = pickGuessForCell(
+                ctxGuesses,
+                cell,
+                cal,
+                usedCopies: usedCopies,
+                marked: markedCells,
+              ) ??
+              guess;
+          if (guess != null) {
+            cov = coverageOfCell(guess, cell, cal);
+          }
         }
+        // No nearby detections at all — cell will be unidentified; skip the
+        // expensive fallback crop that would find nothing anyway.
       }
       if (cell.x != 0 &&
           guess != null &&
@@ -275,6 +299,20 @@ class TileSelectionBuilder {
       b.right.clamp(0, decoded.width.toDouble()),
       b.bottom.clamp(0, decoded.height.toDouble()),
     );
+  }
+
+  /// Whether any cached detection overlaps [cell] at all — if not, a fallback
+  /// crop is unlikely to find anything useful.
+  static bool _hasNearbyDetection(
+    List<TfliteProcessedGuess> guesses,
+    GridCell cell,
+    TileSelectionCalibration cal,
+  ) {
+    for (final g in guesses) {
+      if (TfliteHelper.isNonTile(g)) continue;
+      if (coverageOfCell(g, cell, cal) > 0) return true;
+    }
+    return false;
   }
 
   static Future<List<TfliteProcessedGuess>> _detectRegion(

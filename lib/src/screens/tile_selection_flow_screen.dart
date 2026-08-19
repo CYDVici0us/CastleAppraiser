@@ -9,8 +9,10 @@ import 'package:btcc/src/tflite/tile_selection_builder.dart';
 import 'package:btcc/src/tflite/tile_selection_geom.dart';
 import 'package:btcc/src/tflite/tile_selection_match.dart';
 import 'package:btcc/src/tflite/tflite_helper.dart';
+import 'package:btcc/src/tflite/tflite_objects.dart';
 import 'package:btcc/src/tflite/windowed_detect.dart';
 import 'package:btcc/src/utils/castle_frame_crop.dart';
+import 'package:image/image.dart' as img;
 import 'package:btcc/src/utils/log.dart';
 import 'package:btcc/src/utils/navigation_helper.dart';
 import 'package:btcc/src/utils/orientation_helper.dart';
@@ -72,6 +74,11 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
 
   int _classifyDone = 0;
   int _classifyTotal = 0;
+  String _classifyPhase = '';
+
+  // Cached from autoseed pass to avoid redundant windowed detect.
+  List<TfliteProcessedGuess>? _cachedGuesses;
+  img.Image? _cachedDecoded;
 
   @override
   void initState() {
@@ -223,6 +230,8 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
           _boundsRect = null;
           _boundsTransformSnapshot = null;
           _boundsViewerMinScaleSnapshot = null;
+          _cachedGuesses = null;
+          _cachedDecoded = null;
           _scheduleRestoreView(
             transformSnapshot: _throneTransformSnapshot,
             minScaleSnapshot: _throneViewerMinScaleSnapshot,
@@ -430,6 +439,11 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
       _marked
         ..clear()
         ..addAll(pruned);
+
+      // Cache for reuse during classification.
+      _cachedGuesses = guesses;
+      _cachedDecoded = decoded;
+
       log('autoseed marked ${_marked.length} cells from ${guesses.length} detections '
           'tile=${refined.tileWidth.toStringAsFixed(1)}x'
           '${refined.tileHeight.toStringAsFixed(1)} '
@@ -522,6 +536,7 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
       _error = null;
       _classifyDone = 0;
       _classifyTotal = _marked.where((c) => !(c.x == 1 && c.y == 0)).length;
+      _classifyPhase = _cachedGuesses != null ? 'Classifying tiles' : 'Scanning castle';
     });
 
     try {
@@ -531,16 +546,26 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
         throneRect: throne,
         boundsRect: bounds,
       );
+      final cachedGuesses = _cachedGuesses;
+      final cachedDecoded = _cachedDecoded;
+      _cachedGuesses = null;
+      _cachedDecoded = null;
       final result = await TileSelectionBuilder.buildCastleWithInfo(
         calibration: calibration,
         marked: _marked,
         store: store,
+        cachedGuesses: cachedGuesses,
+        cachedDecoded: cachedDecoded,
         onProgress: (done, total) {
           if (!mounted) return;
           setState(() {
             _classifyDone = done;
             _classifyTotal = total;
           });
+        },
+        onPhase: (phase) {
+          if (!mounted) return;
+          setState(() => _classifyPhase = phase);
         },
       );
       final grid = result.grid;
@@ -800,9 +825,32 @@ class _TileSelectionFlowScreenState extends State<TileSelectionFlowScreen> {
                                 children: [
                                   const CircularProgressIndicator(),
                                   const SizedBox(height: 16),
+                                  if (_classifyPhase.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 4),
+                                      child: Text(
+                                        _classifyPhase,
+                                        style: TextStyle(
+                                          color: Colors.white.withValues(alpha: 0.7),
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
                                   Text(
                                     '$_classifyDone / $_classifyTotal tiles',
                                     style: const TextStyle(color: Colors.white),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  SizedBox(
+                                    width: 200,
+                                    child: LinearProgressIndicator(
+                                      value: _classifyTotal > 0
+                                          ? _classifyDone / _classifyTotal
+                                          : null,
+                                      backgroundColor: Colors.white24,
+                                      color: Colors.lightGreenAccent,
+                                      minHeight: 4,
+                                    ),
                                   ),
                                 ],
                               ),

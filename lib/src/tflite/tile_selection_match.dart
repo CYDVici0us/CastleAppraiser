@@ -20,6 +20,11 @@ const double kMinAmbiguousSecondCoverage = 0.18;
 /// west-wing cells. Leaving both unidentified is better than a unique-room shift.
 const double kCoverageClearMargin = 0.18;
 
+/// Relaxed coverage threshold for accepting a cached windowed-detect match
+/// without running an expensive per-cell fallback crop. Saves ~4s per cell
+/// when the detection is close but slightly under [kMinCellCoverage].
+const double kFallbackAcceptCoverage = 0.20;
+
 /// Autoseed only: lower threshold for the *center* point on cells above the
 /// ground row (`gy < 0`).
 ///
