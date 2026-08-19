@@ -1,6 +1,8 @@
 import 'package:btcc/src/utils/log.dart';
 import 'package:btcc/src/analytics/analytics.dart';
 import 'package:btcc/src/models/exports.dart';
+import 'package:btcc/src/tflite/cell_guess_info.dart';
+import 'package:btcc/src/tflite/cell_guess_remap.dart';
 import 'package:btcc/src/utils/grid_expander.dart';
 import 'package:btcc/src/utils/navigation_helper.dart';
 import 'package:btcc/src/utils/tile_helper.dart';
@@ -13,6 +15,7 @@ import 'package:btcc/src/widgets/builder/expandable_grid_map_view.dart';
 import 'package:btcc/src/widgets/builder/filtered_drag_and_drop_list_view.dart';
 import 'package:btcc/src/widgets/builder/tile_picker_sheet.dart';
 import 'package:btcc/src/widgets/button_padding.dart';
+import 'package:btcc/src/widgets/castle/guess_confidence_overlay.dart';
 import 'package:btcc/src/widgets/flow_breadcrumb.dart';
 import 'package:btcc/src/widgets/tile/scoring_blurb.dart';
 import 'package:btcc/src/widgets/tile/scoring_placement_grid.dart';
@@ -36,6 +39,8 @@ class CastleBuilderScreen extends StatefulWidget {
   final String? gameTitle;
   /// View-only: zoom map + token strip, no edit controls.
   final bool readOnly;
+  /// Scan confidence from Confirm or a debug-saved castle (not written in release).
+  final Map<int, CellGuessInfo>? cellGuesses;
 
   CastleBuilderScreen({
     required this.castleTiles,
@@ -46,6 +51,7 @@ class CastleBuilderScreen extends StatefulWidget {
     this.numPicturesTaken = 0,
     this.gameTitle,
     this.readOnly = false,
+    this.cellGuesses,
   });
 
   @override
@@ -66,10 +72,13 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
   DraggedTileInfo? _draggingTile;
   late Castle _castle;
   int? _selectedIndex;
+  Map<int, CellGuessInfo> _cellGuesses = {};
   /// Index shown in the selection panel (kept during close animation).
   int? _panelIndex;
   /// Set while a grid tile is being dragged (cell already emptied).
   int? _gridDragSourceIndex;
+  /// Scan metadata for the tile currently being dragged (restored on cancel).
+  CellGuessInfo? _draggedCellGuess;
   bool _isSaving = false;
   late final AnimationController _panelController;
   late final Animation<Offset> _panelSlide;
@@ -111,6 +120,14 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
       getEmpty: () => Empty(),
     );
     _castleTiles = normalized.grid;
+    var guesses = Map<int, CellGuessInfo>.from(
+      widget.cellGuesses ?? widget.existingCastle?.cellGuesses ?? {},
+    );
+    guesses.removeWhere((i, _) {
+      if (i < 0 || i >= widget.castleTiles.items.length) return true;
+      return TokenTileGrid.isTokenTile(widget.castleTiles.items[i]);
+    });
+    _cellGuesses = remapCellGuesses(guesses, normalized);
     // Always start collapsed; expand only when the user taps the strip.
     _tokenStripExpanded = false;
     _refreshAvailableTiles();
@@ -225,12 +242,77 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
         getEmpty: () => Empty(),
       );
 
+  int get _uncertainGuessCount =>
+      _cellGuesses.values.where((g) => g.needsReview).length;
+
+  GridNormalizeResult<Tile> _applyNormalized(
+    GridList<Tile> copy, {
+    Iterable<int> clearGuesses = const [],
+  }) {
+    var guesses = Map<int, CellGuessInfo>.from(_cellGuesses);
+    for (final i in clearGuesses) {
+      guesses.remove(i);
+    }
+    final normalized = _normalize(copy);
+    _castleTiles = normalized.grid;
+    _cellGuesses = remapCellGuesses(guesses, normalized);
+    return normalized;
+  }
+
   void _updateCastle(GridList<Tile> copy) {
     setState(() {
-      _castleTiles = copy;
+      _applyNormalized(copy);
       _syncCastleFromParts();
       _draggingTile = null;
     });
+  }
+
+  int? _nextUncertainIndex() {
+    if (_cellGuesses.isEmpty) return null;
+    final n = _castleTiles.items.length;
+    if (n == 0) return null;
+    final start = (_selectedIndex ?? -1) + 1;
+    for (var k = 0; k < n; k++) {
+      final i = (start + k) % n;
+      final info = _cellGuesses[i];
+      if (info != null && info.needsReview) return i;
+    }
+    return null;
+  }
+
+  void _nextUncertain() {
+    final next = _nextUncertainIndex();
+    if (next == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No uncertain tiles left')),
+      );
+      return;
+    }
+    _selectGridCell(next);
+  }
+
+  Widget _scanReviewBanner(BuildContext context) {
+    final uncertain = _uncertainGuessCount;
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            Icon(Icons.help_outline, color: scheme.onSecondaryContainer),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '$uncertain tile${uncertain == 1 ? '' : 's'} need a '
+                'look — tap to fix or use Next.',
+                style: TextStyle(color: scheme.onSecondaryContainer),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _clearSearchState() {
@@ -313,12 +395,11 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
 
     var copy = _castleTiles;
     copy.items[index] = tile;
-    final normalized = _normalize(copy);
-
     setState(() {
-      _castleTiles = normalized.grid;
+      _applyNormalized(copy, clearGuesses: [index]);
       _draggingTile = null;
       _gridDragSourceIndex = null;
+      _draggedCellGuess = null;
       _refreshAvailableTiles();
       _syncCastleFromParts();
       _selectedTokenIndex = null;
@@ -341,15 +422,15 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
 
     final copy = _castleTiles;
     copy.items[index] = Empty();
-    final normalized = _normalize(copy);
-    final mapped = normalized.mapIndex(index);
 
     setState(() {
-      _castleTiles = normalized.grid;
+      final normalized = _applyNormalized(copy, clearGuesses: [index]);
       _draggingTile = null;
       _gridDragSourceIndex = null;
+      _draggedCellGuess = null;
       _refreshAvailableTiles();
       _syncCastleFromParts();
+      final mapped = normalized.mapIndex(index);
       _selectedIndex = mapped;
       _panelIndex = mapped;
       _selectedTokenIndex = null;
@@ -382,11 +463,14 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
         getEmpty: () => Empty(),
       );
       if (result != OrthogonalMoveResult.failed) {
-        final normalized = _normalize(copy);
         setState(() {
-          _castleTiles = normalized.grid;
+          _applyNormalized(
+            copy,
+            clearGuesses: [source, index],
+          );
           _draggingTile = null;
           _gridDragSourceIndex = null;
+          _draggedCellGuess = null;
           _refreshAvailableTiles();
           _syncCastleFromParts();
           _selectedTokenIndex = null;
@@ -409,9 +493,18 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
         if (!copy.items[index].isEmpty() ||
             !_canAddAt(index) ||
             !_canPlaceTileAt(index, item)) {
+          if (source != null) {
+            copy.items[source] = item;
+            if (_draggedCellGuess != null) {
+              _cellGuesses[source] = _draggedCellGuess!;
+            }
+          }
           setState(() {
+            _applyNormalized(copy);
+            _syncCastleFromParts();
             _draggingTile = null;
             _gridDragSourceIndex = null;
+            _draggedCellGuess = null;
           });
           return;
         }
@@ -419,11 +512,14 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
       copy.items[index] = item;
     }
 
-    final normalized = _normalize(copy);
     setState(() {
-      _castleTiles = normalized.grid;
+      _applyNormalized(
+        copy,
+        clearGuesses: [if (source != null) source, index],
+      );
       _draggingTile = null;
       _gridDragSourceIndex = null;
+      _draggedCellGuess = null;
       _refreshAvailableTiles();
       _syncCastleFromParts();
       _selectedTokenIndex = null;
@@ -527,6 +623,7 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
     final invalids = isSearchPreview
         ? const <PlacementInvalidReason>[]
         : TilePlacement.invalidReasons(_castleTiles, index);
+    final guessInfo = isSearchPreview ? null : _cellGuesses[index];
     final metaStyle = theme.textTheme.bodyMedium?.copyWith(
       color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
     );
@@ -564,11 +661,15 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
                     ),
                     const SizedBox(height: 4),
                     Center(
-                      child: TileWidget(
-                        tile,
-                        scale: scale,
-                        showOutline: true,
-                        showInvalidBadge: invalids.isNotEmpty,
+                      child: GuessConfidenceOverlay(
+                        info: guessInfo,
+                        tile: tile,
+                        child: TileWidget(
+                          tile,
+                          scale: scale,
+                          showOutline: true,
+                          showInvalidBadge: invalids.isNotEmpty,
+                        ),
                       ),
                     ),
                     if (showDetails) ...[
@@ -612,11 +713,16 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
                               alignToEdges: false,
                             ),
                             const SizedBox(height: 4),
-                            TileWidget(
-                              tile,
+                            GuessConfidenceOverlay(
+                              info: guessInfo,
+                              tile: tile,
                               scale: imageScale,
-                              showOutline: true,
-                              showInvalidBadge: invalids.isNotEmpty,
+                              child: TileWidget(
+                                tile,
+                                scale: imageScale,
+                                showOutline: true,
+                                showInvalidBadge: invalids.isNotEmpty,
+                              ),
                             ),
                           ],
                         ),
@@ -661,6 +767,28 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
               color: theme.colorScheme.error,
             ),
           ),
+        ],
+        if (guessInfo != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            guessInfo.reviewHint,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: guessInfo.needsReview
+                  ? theme.colorScheme.tertiary
+                  : theme.colorScheme.primary,
+            ),
+          ),
+          if (guessInfo.alternatives.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              'Also considered: ${guessInfo.alternatives.map((label) => TileHelper().getTileByLabel(label).name).join(', ')}',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
+            ),
+          ],
         ],
       ],
     );
@@ -915,10 +1043,9 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
 
           var copy = _allTiles;
           copy.insert(roughIndex, details.data);
-          final normalized = _normalize(_castleTiles);
           setState(() {
             _allTiles = copy;
-            _castleTiles = normalized.grid;
+            _applyNormalized(_castleTiles);
             _syncCastleFromParts();
             _gridDragSourceIndex = null;
           });
@@ -1297,11 +1424,15 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
         isOccupied: _isOccupied,
         canDropOnItem: _canDropTarget,
         canAcceptDraggedItem: _canAcceptDraggedTile,
-        builder: (context, index, item) => TileWidget(
-          item,
-          showOutline: true,
-          showInvalidBadge:
-              TilePlacement.hasInvalidPlacement(_castleTiles, index),
+        builder: (context, index, item) => GuessConfidenceOverlay(
+          info: _cellGuesses[index],
+          tile: item,
+          child: TileWidget(
+            item,
+            showOutline: true,
+            showInvalidBadge:
+                TilePlacement.hasInvalidPlacement(_castleTiles, index),
+          ),
         ),
         feedback: (context, index, item) => TileWidget(
           item,
@@ -1342,12 +1473,12 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
             _syncCastleFromParts();
             _draggingTile = DraggedTileInfo(index, item);
             _gridDragSourceIndex = index;
+            _draggedCellGuess = _cellGuesses.remove(index);
             _selectedTokenIndex = null;
             _dismissGridSelectionImmediate();
           });
         },
-        onExpandCollapse: (result) {
-          _updateCastle(result);
+        onExpandCollapse: (_) {
           setState(() {
             _refreshAvailableTiles();
           });
@@ -1365,9 +1496,12 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
             copy.items[index] = item;
           }
 
-          final normalized = _normalize(copy);
           setState(() {
-            _castleTiles = normalized.grid;
+            if (_draggedCellGuess != null) {
+              _cellGuesses[index] = _draggedCellGuess!;
+              _draggedCellGuess = null;
+            }
+            _applyNormalized(copy);
             _syncCastleFromParts();
             _draggingTile = null;
             _gridDragSourceIndex = null;
@@ -1486,6 +1620,10 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
 
   Future<void> _persistCastle() async {
     var castle = Castle(_mergedGrid());
+    castle.cellGuesses = cellGuessesFromThroneMap(
+      castle.castleTiles,
+      cellGuessesToThroneMap(_castleTiles, _cellGuesses),
+    );
     if (widget.updateCastleCallback != null &&
         widget.existingCastle != null) {
       castle.hiveCastle = widget.existingCastle!.hiveCastle;
@@ -1667,6 +1805,12 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
           },
         ),
         actions: [
+          if (!readOnly && _uncertainGuessCount > 0)
+            TextButton.icon(
+              onPressed: _nextUncertain,
+              icon: const Icon(Icons.navigate_next),
+              label: Text('Next ($_uncertainGuessCount)'),
+            ),
           if (!readOnly)
             IconButton(
               icon: const Icon(Icons.help_outline),
@@ -1687,6 +1831,8 @@ class _CastleBuilderScreenState extends State<CastleBuilderScreen>
                 Expanded(
                   child: Column(
                     children: [
+                      if (!readOnly && _uncertainGuessCount > 0)
+                        _scanReviewBanner(context),
                       _getTokenStrip(),
                       Expanded(
                         child: _getBody(),

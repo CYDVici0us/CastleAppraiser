@@ -5,6 +5,8 @@ import 'package:btcc/src/utils/tile_helper.dart';
 import 'package:btcc/src/utils/token_tile_grid.dart';
 
 import 'package:btcc/src/models/exports.dart';
+import 'package:btcc/src/tflite/cell_guess_info.dart';
+import 'package:btcc/src/tflite/cell_guess_remap.dart';
 import 'dart:collection';
 
 class Castle {
@@ -12,6 +14,8 @@ class Castle {
   late GridList<Tile> castleTiles;
   HiveCastle? hiveCastle;
   String title='Castle';
+  /// Scan confidence keyed by current grid index. Debug Hive only.
+  Map<int, CellGuessInfo> cellGuesses = {};
 
   Map<TileId,int> tileScores = {};
   ScoreCard? castleScoreCard;
@@ -63,6 +67,7 @@ class Castle {
       ),
       getEmpty: () => Empty(),
     ));
+    cellGuesses = decodeCellGuessesJson(castleTiles, hiveCastle.scanGuessJson);
   }
 
   void _initFromGridList(GridList<Tile> castleTiles) {

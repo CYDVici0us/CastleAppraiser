@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'package:btcc/src/models/exports.dart';
+import 'package:btcc/src/tflite/cell_guess_info.dart';
+import 'package:btcc/src/tflite/cell_guess_remap.dart';
 import 'package:btcc/src/tflite/tflite_helper.dart';
 import 'package:btcc/src/utils/grid_expander.dart';
 import 'package:btcc/src/utils/tile_helper.dart';
@@ -22,6 +24,8 @@ class CastleFixture {
   final Map<String, String> labels;
   final List<String> bonus;
   final List<String> attendants;
+  /// Debug scan confidence keyed like [labels] (`"gx,gy"`).
+  final Map<String, CellGuessInfo> scan;
 
   const CastleFixture({
     required this.image,
@@ -31,6 +35,7 @@ class CastleFixture {
     required this.labels,
     this.bonus = const [],
     this.attendants = const [],
+    this.scan = const {},
   });
 
   static const String sourceAsset = 'asset';
@@ -50,19 +55,28 @@ class CastleFixture {
     return slash.substring(0, dot);
   }
 
-  Map<String, Object?> toJson() => {
-        'image': image,
-        'source': source,
-        'expectedRooms': expectedRooms,
-        'occupied': occupied,
-        'labels': labels,
-        'bonus': bonus,
-        'attendants': attendants,
+  Map<String, Object?> toJson() {
+    final json = <String, Object?>{
+      'image': image,
+      'source': source,
+      'expectedRooms': expectedRooms,
+      'occupied': occupied,
+      'labels': labels,
+      'bonus': bonus,
+      'attendants': attendants,
+    };
+    if (scan.isNotEmpty) {
+      final keys = scan.keys.toList()..sort();
+      json['scan'] = {
+        for (final key in keys) key: scan[key]!.toJson(),
       };
+    }
+    return json;
+  }
 
   String toPrettyJson() => const JsonEncoder.withIndent('  ').convert(toJson());
 
-  factory CastleFixture.fromJson(Map<String, Object?> json) {
+  factory CastleFixture.fromJson(Map json) {
     final occupiedRaw = json['occupied'] as List<dynamic>? ?? const [];
     final labelsRaw = json['labels'] as Map<dynamic, dynamic>? ?? const {};
     return CastleFixture(
@@ -86,7 +100,20 @@ class CastleFixture {
         for (final v in json['attendants'] as List<dynamic>? ?? const [])
           v.toString(),
       ],
+      scan: _scanFromJson(json['scan']),
     );
+  }
+
+  static Map<String, CellGuessInfo> _scanFromJson(Object? raw) {
+    if (raw is! Map) return const {};
+    final out = <String, CellGuessInfo>{};
+    for (final e in raw.entries) {
+      final value = e.value;
+      if (value is Map) {
+        out[e.key.toString()] = CellGuessInfo.fromJson(value);
+      }
+    }
+    return out;
   }
 
   /// Build a fixture from an edited castle grid.
@@ -149,6 +176,55 @@ class CastleFixture {
       labels: labels,
       bonus: bonus,
       attendants: attendants,
+      scan: {
+        for (final e in cellGuessesToThroneMap(
+          castle.castleTiles,
+          castle.cellGuesses,
+        ).entries)
+          e.key: CellGuessInfo.fromJson(e.value),
+      },
+    );
+  }
+
+  /// Compare this golden to [actual] (typically from a Scan conversion).
+  CastleFixtureDiff diff(CastleFixture actual) {
+    String cellKey(List<int> c) => '${c[0]},${c[1]}';
+    final expOcc = {for (final c in occupied) cellKey(c)};
+    final actOcc = {for (final c in actual.occupied) cellKey(c)};
+    final missingOccupied = (expOcc.difference(actOcc).toList()..sort());
+    final extraOccupied = (actOcc.difference(expOcc).toList()..sort());
+
+    final wrongLabels = <String, String>{};
+    final missingLabels = <String>[];
+    for (final e in labels.entries) {
+      final got = actual.labels[e.key];
+      if (got == null) {
+        missingLabels.add(e.key);
+      } else if (got != e.value) {
+        wrongLabels[e.key] = '${e.value} → $got';
+      }
+    }
+
+    List<String> bagDiff(List<String> a, List<String> b) {
+      final remaining = List<String>.from(b);
+      final missing = <String>[];
+      for (final item in a) {
+        if (!remaining.remove(item)) missing.add(item);
+      }
+      return missing;
+    }
+
+    return CastleFixtureDiff(
+      expectedRooms: expectedRooms,
+      actualRooms: actual.expectedRooms,
+      missingOccupied: missingOccupied,
+      extraOccupied: extraOccupied,
+      missingLabels: missingLabels..sort(),
+      wrongLabels: wrongLabels,
+      missingBonus: bagDiff(bonus, actual.bonus),
+      extraBonus: bagDiff(actual.bonus, bonus),
+      missingAttendants: bagDiff(attendants, actual.attendants),
+      extraAttendants: bagDiff(actual.attendants, attendants),
     );
   }
 
@@ -159,6 +235,64 @@ class CastleFixture {
       }
     }
     return (0, 0);
+  }
+}
+
+class CastleFixtureDiff {
+  final int expectedRooms;
+  final int actualRooms;
+  final List<String> missingOccupied;
+  final List<String> extraOccupied;
+  final List<String> missingLabels;
+  final Map<String, String> wrongLabels;
+  final List<String> missingBonus;
+  final List<String> extraBonus;
+  final List<String> missingAttendants;
+  final List<String> extraAttendants;
+
+  const CastleFixtureDiff({
+    required this.expectedRooms,
+    required this.actualRooms,
+    required this.missingOccupied,
+    required this.extraOccupied,
+    required this.missingLabels,
+    required this.wrongLabels,
+    required this.missingBonus,
+    required this.extraBonus,
+    required this.missingAttendants,
+    required this.extraAttendants,
+  });
+
+  int get shapeErrors =>
+      (expectedRooms == actualRooms ? 0 : 1) +
+      missingOccupied.length +
+      extraOccupied.length;
+
+  int get identityErrors =>
+      missingLabels.length +
+      wrongLabels.length +
+      missingBonus.length +
+      extraBonus.length +
+      missingAttendants.length +
+      extraAttendants.length;
+
+  bool get isPerfect => shapeErrors == 0 && identityErrors == 0;
+
+  @override
+  String toString() {
+    final lines = <String>[
+      'rooms $actualRooms/$expectedRooms',
+      if (missingOccupied.isNotEmpty) 'missing occupied: $missingOccupied',
+      if (extraOccupied.isNotEmpty) 'extra occupied: $extraOccupied',
+      if (missingLabels.isNotEmpty) 'missing labels: $missingLabels',
+      if (wrongLabels.isNotEmpty) 'wrong labels: $wrongLabels',
+      if (missingBonus.isNotEmpty) 'missing bonus: $missingBonus',
+      if (extraBonus.isNotEmpty) 'extra bonus: $extraBonus',
+      if (missingAttendants.isNotEmpty) 'missing attendants: $missingAttendants',
+      if (extraAttendants.isNotEmpty) 'extra attendants: $extraAttendants',
+    ];
+    if (isPerfect) return 'perfect';
+    return lines.join('\n');
   }
 }
 

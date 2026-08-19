@@ -1,0 +1,3 @@
+tags:
+  fixture-pipeline:
+    timeout: 20m

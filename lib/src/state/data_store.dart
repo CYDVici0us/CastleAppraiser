@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:btcc/src/utils/log.dart';
 import 'package:btcc/src/models/exports.dart';
+import 'package:btcc/src/tflite/cell_guess_remap.dart';
 import 'package:btcc/src/utils/player_helper.dart';
 import 'package:btcc/src/utils/typedefs.dart';
 import 'package:btcc/src/utils/debug_castle_assets.dart';
@@ -224,6 +225,9 @@ class DataStore extends ChangeNotifier {
     if (castle.hiveCastle?.debugAssetName != null) {
       hiveCastle.debugAssetName = castle.hiveCastle!.debugAssetName;
     }
+    hiveCastle.scanGuessJson = kDebugMode
+        ? encodeCellGuessesJson(castle.castleTiles, castle.cellGuesses)
+        : null;
     await hiveCastle.save();
 
     game.hiveGame.updated = DateTime.now();
@@ -276,6 +280,9 @@ class DataStore extends ChangeNotifier {
     }
     hiveCastle.imagePath = imagePath;
     hiveCastle.debugAssetName = debugAssetName;
+    hiveCastle.scanGuessJson = kDebugMode
+        ? encodeCellGuessesJson(castle.castleTiles, castle.cellGuesses)
+        : null;
 
     addCastle(hiveCastle);
     game.hiveGame.castles!.add(hiveCastle);

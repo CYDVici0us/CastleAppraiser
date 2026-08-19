@@ -28,7 +28,6 @@ class _GameEditScreenState extends State<GameEditScreen> {
   
   Game? game;
   bool _sorting = false;
-  String? _pendingDebugAssetName;
 
   _GameEditScreenState({this.game});
 
@@ -42,22 +41,15 @@ class _GameEditScreenState extends State<GameEditScreen> {
 
   Future<void> _addCastle(Castle castle, String imagePath, 
     int numPicturesTaken) async {
-    final assetName = _pendingDebugAssetName;
-    _pendingDebugAssetName = null;
-
     if (this.game == null) {
       var store = Provider.of<DataStore>(context, listen: false);
       this.game = await store.createAndPersistGame();
     }
 
     var store = Provider.of<DataStore>(context, listen: false);
-    if (assetName != null && assetName.isNotEmpty) {
-      castle.title = DebugCastleAssets.stem(assetName);
-    } else {
-      castle.title = store.nextCastleTitle(this.game!);
-    }
+    castle.title = store.nextCastleTitle(this.game!);
     var updated = await store.addCastleToGame(castle, imagePath, 
-      this.game!, numPicturesTaken, debugAssetName: assetName);
+      this.game!, numPicturesTaken);
 
     updated.recalculateScores();
     
@@ -188,11 +180,11 @@ class _GameEditScreenState extends State<GameEditScreen> {
         await _updateCastle(updated);
       },
       gameTitle: game?.title,
+      cellGuesses: kDebugMode ? castle.cellGuesses : null,
     );
   }
 
   Future<void> _onBuildCastle() async {
-    _pendingDebugAssetName = null;
     final TileId throneId;
     if (kDebugMode) {
       throneId = TileId.ThroneRoomPerCorridorDownstairs;
@@ -262,7 +254,7 @@ class _GameEditScreenState extends State<GameEditScreen> {
     openCastleCallback: _openCastle,
     renameCastleCallback: _renameCastle,
     editCastleCallback: _editCastle,
-    exportCastleCallback: _isDebugGame ? _exportCastle : null,
+    exportCastleCallback: kDebugMode ? _exportCastle : null,
     getCastleColorCallback: _getCastleItemColor,
   );
 
@@ -277,43 +269,6 @@ class _GameEditScreenState extends State<GameEditScreen> {
     }
   }
 
-  void _openAddCastle() {
-    _pendingDebugAssetName = null;
-    if (_isDebugGame) {
-      showModalBottomSheet<void>(
-        context: context,
-        builder: (ctx) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.camera_alt),
-                title: const Text('Take or pick a photo'),
-                subtitle: const Text('Export JSON + image after you fix the map'),
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  _startCameraFlow();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_library_outlined),
-                title: const Text('Choose debug photo'),
-                subtitle: const Text(
-                    'test/fixtures/castles — export JSON next to the photo'),
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  _startDebugAssetFlow();
-                },
-              ),
-            ],
-          ),
-        ),
-      );
-      return;
-    }
-    _startCameraFlow();
-  }
-
   void _startCameraFlow() {
     final cameraStore = Provider.of<CameraStore>(context, listen: false);
     NavigationHelper.goToCameraExperience(
@@ -323,15 +278,6 @@ class _GameEditScreenState extends State<GameEditScreen> {
       replace: false,
       cameraTech: cameraStore.cameraTech,
       gameTitle: game?.title ?? 'New Game',
-    );
-  }
-
-  void _startDebugAssetFlow() {
-    NavigationHelper.goToDebugAssetPickerScreen(
-      context,
-      addCastleCallback: _addCastle,
-      gameTitle: game?.title ?? DebugCastleAssets.gameTitle,
-      onAssetChosen: (name) => _pendingDebugAssetName = name,
     );
   }
 
@@ -390,7 +336,7 @@ class _GameEditScreenState extends State<GameEditScreen> {
           heroTag: '1',
           label: Text(_isDebugGame ? 'Add debug castle' : 'Add Castle'),
           icon: const Icon(Icons.camera_alt),
-          onPressed: _openAddCastle,
+          onPressed: _startCameraFlow,
         ),
         const SizedBox(width: 8),
       ],

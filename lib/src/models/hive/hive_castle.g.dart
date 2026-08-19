@@ -24,13 +24,14 @@ class HiveCastleAdapter extends TypeAdapter<HiveCastle> {
       updated: fields[4] as DateTime?,
       title: fields[5] as String?,
       debugAssetName: fields[6] as String?,
+      scanGuessJson: fields[7] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, HiveCastle obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(8)
       ..writeByte(0)
       ..write(obj.tiles)
       ..writeByte(1)
@@ -44,7 +45,9 @@ class HiveCastleAdapter extends TypeAdapter<HiveCastle> {
       ..writeByte(5)
       ..write(obj.title)
       ..writeByte(6)
-      ..write(obj.debugAssetName);
+      ..write(obj.debugAssetName)
+      ..writeByte(7)
+      ..write(obj.scanGuessJson);
   }
 
   @override

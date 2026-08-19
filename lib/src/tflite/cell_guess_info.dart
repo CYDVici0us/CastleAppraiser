@@ -1,6 +1,6 @@
 import 'package:btcc/src/models/enums/tile_labels.dart';
 
-/// Session-only ML confidence for a grid cell (not persisted in Hive).
+/// ML confidence for a grid cell.
 enum GuessConfidenceLevel {
   high,
   medium,
@@ -8,7 +8,10 @@ enum GuessConfidenceLevel {
   unidentified,
 }
 
-/// Per-cell detection metadata for Confirm / review (discarded on save).
+/// Per-cell detection metadata for Confirm / review.
+///
+/// Debug builds persist this with the castle (Hive) and include it in fixture
+/// export. Release builds never write it.
 class CellGuessInfo {
   final double score;
   final double coverage;
@@ -31,6 +34,24 @@ class CellGuessInfo {
 
   bool get needsReview =>
       unidentified || level == GuessConfidenceLevel.low || level == GuessConfidenceLevel.medium;
+
+  String get _scorePercent => '${(score * 100).round()}%';
+
+  String get reviewHint {
+    if (unidentified || level == GuessConfidenceLevel.unidentified) {
+      return 'Unidentified — confirm this cell';
+    }
+    switch (level) {
+      case GuessConfidenceLevel.high:
+        return 'High confidence from scan ($_scorePercent)';
+      case GuessConfidenceLevel.medium:
+        return 'Medium confidence ($_scorePercent) — worth a look';
+      case GuessConfidenceLevel.low:
+        return 'Low confidence ($_scorePercent) — check this tile';
+      case GuessConfidenceLevel.unidentified:
+        return 'Unidentified — confirm this cell';
+    }
+  }
 
   CellGuessInfo copyWith({
     double? score,
@@ -65,5 +86,36 @@ class CellGuessInfo {
       coverage: coverage,
       alternatives: alternatives,
     );
+  }
+
+  Map<String, Object?> toJson() => {
+        'score': score,
+        'coverage': coverage,
+        'unidentified': unidentified,
+        'level': level.name,
+        if (alternatives.isNotEmpty)
+          'alternatives': [for (final label in alternatives) label.name],
+      };
+
+  factory CellGuessInfo.fromJson(Map json) {
+    final altsRaw = json['alternatives'] as List<dynamic>? ?? const [];
+    final alternatives = <TileLabels>[];
+    for (final raw in altsRaw) {
+      final label = _labelNamed(raw.toString());
+      if (label != null) alternatives.add(label);
+    }
+    return CellGuessInfo(
+      score: (json['score'] as num?)?.toDouble() ?? 0,
+      coverage: (json['coverage'] as num?)?.toDouble() ?? 0,
+      unidentified: json['unidentified'] as bool? ?? false,
+      alternatives: alternatives,
+    );
+  }
+
+  static TileLabels? _labelNamed(String name) {
+    for (final label in TileLabels.values) {
+      if (label.name == name) return label;
+    }
+    return null;
   }
 }

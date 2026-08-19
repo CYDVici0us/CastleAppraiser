@@ -13,6 +13,8 @@ import 'package:btcc/src/widgets/castle/score_card_widget.dart';
 import 'package:btcc/src/widgets/castle/tile_score_grid.dart';
 import 'package:btcc/src/widgets/flow_breadcrumb.dart';
 import 'package:btcc/src/widgets/interactive_modal.dart';
+import 'package:btcc/src/utils/castle_fixture_export.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
 import 'package:path_provider/path_provider.dart';
@@ -41,7 +43,19 @@ class CastleScreen extends StatelessWidget {
       existingCastle: castle,
       gameTitle: gameTitle,
       readOnly: true,
+      cellGuesses: kDebugMode ? castle.cellGuesses : null,
     );
+  }
+
+  Future<void> _exportFixture(BuildContext context) async {
+    try {
+      await CastleFixtureExport.share(castle);
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not export fixture: $e')),
+      );
+    }
   }
 
   void _openShareModal(BuildContext context) {
@@ -191,6 +205,12 @@ class CastleScreen extends StatelessWidget {
               renameCastleCallback!();
             },
           ),
+          if (kDebugMode)
+            IconButton(
+              icon: const Icon(Icons.ios_share),
+              tooltip: 'Export fixture',
+              onPressed: () => _exportFixture(context),
+            ),
           if (!onlyShowScoreCard) IconButton(
             icon: const Icon(Icons.share),
             tooltip: 'Share',
@@ -241,7 +261,10 @@ class CastleScreen extends StatelessWidget {
                   ),
                   InkWell(
                     onTap: () => _openCastleView(context),
-                    child: CastleTilesGrid(castle.castleTiles),
+                    child: CastleTilesGrid(
+                      castle.castleTiles,
+                      cellGuesses: kDebugMode ? castle.cellGuesses : null,
+                    ),
                   ),
                 ],
                 _sectionHeader(context, 'Points per tile'),

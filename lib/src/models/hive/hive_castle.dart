@@ -30,6 +30,11 @@ class HiveCastle extends HiveObject {
   @HiveField(6)
   String? debugAssetName;
 
+  /// Debug-only JSON of throne-relative scan confidence (`"gx,gy"` keys).
+  /// Release builds never write this field.
+  @HiveField(7)
+  String? scanGuessJson;
+
   HiveCastle({
     this.tiles,
     this.tileWidth,
@@ -38,6 +43,7 @@ class HiveCastle extends HiveObject {
     this.updated,
     this.title,
     this.debugAssetName,
+    this.scanGuessJson,
   });
 
   HiveCastle.fromCastle(Castle castle) {
@@ -60,5 +66,6 @@ class HiveCastle extends HiveObject {
     'updated': updated.toString(),
     'title': title,
     'debugAssetName': debugAssetName,
+    'scanGuessJson': scanGuessJson,
   };
 }

@@ -359,6 +359,7 @@ class _CastleConfirmScreenState extends State<CastleConfirmScreen> {
                       addCastleCallback: widget.addCastleCallback,
                       numPicturesTaken: widget.numPicturesTaken,
                       gameTitle: widget.gameTitle,
+                      cellGuesses: _guesses,
                     );
                   },
                 ),
@@ -370,6 +371,7 @@ class _CastleConfirmScreenState extends State<CastleConfirmScreen> {
                   label: const Text('Yes'),
                   onPressed: () async {
                     final castle = Castle(_tiles);
+                    castle.cellGuesses = Map<int, CellGuessInfo>.from(_guesses);
                     await widget.addCastleCallback(
                       castle,
                       widget.imagePath ?? '',

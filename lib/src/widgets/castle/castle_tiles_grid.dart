@@ -2,6 +2,7 @@ import 'package:btcc/src/models/exports.dart';
 import 'package:btcc/src/tflite/cell_guess_info.dart';
 import 'package:btcc/src/utils/grid_expander.dart';
 import 'package:btcc/src/utils/tile_placement.dart';
+import 'package:btcc/src/widgets/castle/guess_confidence_overlay.dart';
 import 'package:btcc/src/widgets/tile/tile_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -39,23 +40,6 @@ class CastleTilesGrid extends StatelessWidget {
     return scale;
   }
 
-  Color? _overlayColor(CellGuessInfo? info, Tile tile) {
-    if (info == null) return null;
-    if (info.unidentified && tile.isEmpty()) {
-      return Colors.orange.withValues(alpha: 0.45);
-    }
-    switch (info.level) {
-      case GuessConfidenceLevel.high:
-        return null;
-      case GuessConfidenceLevel.medium:
-        return Colors.amber.withValues(alpha: 0.35);
-      case GuessConfidenceLevel.low:
-        return Colors.deepOrange.withValues(alpha: 0.4);
-      case GuessConfidenceLevel.unidentified:
-        return Colors.orange.withValues(alpha: 0.45);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final scaleToUse = _getScale(context);
@@ -78,7 +62,6 @@ class CastleTilesGrid extends StatelessWidget {
       final info = cellGuesses?[i];
       final invalid = gapFillingToken ||
           TilePlacement.hasInvalidPlacement(castleTiles, i);
-      final overlay = _overlayColor(info, tile);
       final isHighlight = highlightIndex == i;
 
       Widget tileWidget = TileWidget(
@@ -88,42 +71,13 @@ class CastleTilesGrid extends StatelessWidget {
         showInvalidBadge: invalid,
       );
 
-      if (overlay != null || isHighlight) {
-        tileWidget = Stack(
-          clipBehavior: Clip.none,
-          children: [
-            tileWidget,
-            if (overlay != null)
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: overlay,
-                      border: isHighlight
-                          ? Border.all(color: Colors.white, width: 3)
-                          : null,
-                    ),
-                  ),
-                ),
-              ),
-            if (info?.unidentified == true && tile.isEmpty())
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: Center(
-                    child: Text(
-                      '?',
-                      style: TextStyle(
-                        fontSize: 28 * scaleToUse,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.orange.shade900,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        );
-      }
+      tileWidget = GuessConfidenceOverlay(
+        info: info,
+        tile: tile,
+        scale: scaleToUse,
+        highlight: isHighlight,
+        child: tileWidget,
+      );
 
       if (onCellTap != null && !tile.isPlaceholder()) {
         tileWidget = GestureDetector(
